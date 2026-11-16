@@ -1,0 +1,2707 @@
+<!DOCTYPE html>
+<!--
+  Plan ishrane i treninga: a single-file web app, no build step and no dependencies.
+
+  The script at the bottom has six sections:
+    1. Data            recipes, shopping catalog, meal options, exercises (edit the plan here)
+    2. Storage         Claude artifact storage, or localStorage on a normal web page
+    3. State and plan  the weekly rhythm, boxes in the fridge, pantry, shopping list
+    4. Exercise demos  animated stick figures
+    5. Views           one function per screen, each returns HTML
+    6. Actions         one click handler, the timers and start-up
+
+  To host it on GitHub Pages, name this file index.html.
+-->
+<html lang="sr-Latn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#EEF1F6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0D162E" media="(prefers-color-scheme: dark)">
+<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Plan">
+<title>Plan ishrane i treninga</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Crect x='3' y='10' width='20' height='12' rx='3' fill='%23F3D9A0' stroke='%2314203D' stroke-width='1.6'/%3E%3Crect x='1' y='5' width='24' height='6' rx='2' fill='%23E0A21A' stroke='%2314203D' stroke-width='1.6'/%3E%3C/svg%3E">
+<style>
+/* ---------- Tokens ---------- */
+:root {
+  --page: #EEF1F6;
+  --surface: #FFFFFF;
+  --surface-2: #F4F6FA;
+  --ink: #14203D;
+  --ink-2: #47557A;
+  --ink-3: #6F7C99;
+  --rim: #1F3A8A;
+  --line: #D4DAE6;
+  --paprika: #C2351D;
+  --on-paprika: #FFFFFF;
+  --dill: #1F7A4C;
+  --kurkuma: #B77A05;
+  --f-label: Bahnschrift, 'DIN Alternate', 'Franklin Gothic Medium', 'Nimbus Sans Narrow', sans-serif-condensed, sans-serif;
+  --f-body: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0D162E;
+    --surface: #16213F;
+    --surface-2: #1C294C;
+    --ink: #EEF2FA;
+    --ink-2: #B9C3DA;
+    --ink-3: #8D9AB8;
+    --rim: #93ABF7;
+    --line: #2B3961;
+    --paprika: #F2705A;
+    --on-paprika: #1B0B07;
+    --dill: #62C894;
+    --kurkuma: #F0BC49;
+    color-scheme: dark;
+  }
+}
+
+/* One colour per dish, used for the lids of its boxes */
+.hue-indijska { --hue: #E0A21A; }
+.hue-meksicka { --hue: #D2532A; }
+.hue-shawarma { --hue: #9A4268; }
+.hue-paprike { --hue: #5E9E3F; }
+.hue-wok { --hue: #1F8F8F; }
+.hue-muckalica { --hue: #B5322E; }
+.hue-massaman { --hue: #B98445; }
+
+/* ---------- Base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font: 16px/1.5 var(--f-body);
+}
+h1, h2, h3, p, ul, ol { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--rim); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+.app { max-width: 560px; margin: 0 auto; padding: 20px 16px 104px; min-height: 100vh; }
+.has-timer .app { padding-bottom: 190px; }
+.view:focus { outline: none; }
+.loading { padding: 80px 0; text-align: center; color: var(--ink-3); }
+
+h1, h2, .num { font-family: var(--f-label); font-weight: 700; letter-spacing: 0.01em; }
+h1 { font-size: 34px; line-height: 1.1; }
+h2 { font-size: 21px; line-height: 1.2; }
+h3 { font-size: 16px; line-height: 1.3; font-weight: 650; }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-3); }
+.small { font-size: 14px; }
+.sv { color: var(--ink-3); font-style: italic; }
+
+.section { margin-top: 28px; }
+.section > h2 { margin-bottom: 10px; }
+.lead { color: var(--ink-2); margin-top: 6px; }
+
+/* ---------- Buttons and inputs ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; padding: 0 16px;
+  border: 1.5px solid var(--rim); border-radius: 10px;
+  background: var(--surface); color: var(--rim); font-weight: 600;
+}
+.btn-primary { background: var(--paprika); border-color: var(--paprika); color: var(--on-paprika); }
+.btn-quiet { border-color: var(--line); color: var(--ink-2); font-weight: 500; }
+.btn-small { min-height: 36px; padding: 0 12px; font-size: 14px; }
+.link { background: none; border: 0; padding: 0; color: var(--rim); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+a.link { display: inline-block; }
+
+.field { display: block; }
+.field > span { display: block; font-size: 14px; color: var(--ink-2); margin-bottom: 4px; }
+.input {
+  width: 100%; min-height: 44px; padding: 8px 12px;
+  border: 1.5px solid var(--line); border-radius: 10px; background: var(--surface);
+}
+.input:focus-visible { border-color: var(--rim); }
+.row { display: flex; gap: 8px; align-items: flex-end; }
+.row > .field { flex: 1; }
+
+/* Round check mark, used for every task */
+.check {
+  flex: none; width: 34px; height: 34px; border-radius: 50%;
+  border: 2px solid var(--rim); background: var(--surface); color: transparent;
+  display: grid; place-items: center; padding: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.check svg { width: 18px; height: 18px; }
+.check.is-done { background: var(--dill); border-color: var(--dill); color: var(--surface); }
+
+/* Option chips (breakfast, snack, quick dinner) */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.chip {
+  min-height: 34px; padding: 0 12px; border-radius: 17px;
+  border: 1.5px solid var(--line); background: var(--surface); color: var(--ink-2); font-size: 14px;
+}
+.chip.is-on { border-color: var(--rim); background: var(--rim); color: var(--surface); font-weight: 600; }
+
+/* Two or more views inside one tab */
+.seg { display: flex; padding: 3px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); }
+.seg-btn { flex: 1; min-height: 38px; border: 0; border-radius: 9px; background: none; color: var(--ink-2); font-weight: 600; }
+.seg-btn.is-on { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1.5px var(--rim); }
+
+/* ---------- Lunch boxes ---------- */
+.boxes { display: inline-flex; gap: 4px; vertical-align: middle; }
+.box { width: 26px; height: 21px; flex: none; }
+.box-lid, .box-body { stroke: var(--ink); stroke-width: 1.4; }
+.box-lid { fill: var(--surface); }
+.box-body { fill: var(--surface); }
+.box.is-full .box-lid { fill: var(--hue, var(--rim)); }
+.box.is-full .box-body { fill: var(--hue, var(--rim)); fill-opacity: 0.28; }
+.box.is-small { width: 18px; height: 15px; }
+
+/* ---------- Today ---------- */
+.dayhead-date { color: var(--ink-2); }
+.dayhead-date::first-letter { text-transform: uppercase; }
+.dayhead-week { color: var(--ink-3); font-size: 14px; margin-top: 2px; }
+
+.weekstrip { display: flex; align-items: stretch; gap: 4px; margin-top: 14px; }
+.wk-arrow {
+  flex: none; width: 30px; border: 0; background: none; color: var(--ink-2); padding: 0;
+  display: grid; place-items: center; border-radius: 8px;
+}
+.wk-arrow svg { width: 18px; height: 18px; }
+.wk-arrow:disabled { opacity: 0.25; cursor: default; }
+.wk-day {
+  flex: 1; min-width: 0; padding: 6px 0 7px; border-radius: 10px;
+  border: 1.5px solid transparent; background: var(--surface);
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+}
+.wk-day .wk-name { font-size: 12px; color: var(--ink-3); }
+.wk-day .wk-num { font-family: var(--f-label); font-weight: 700; font-size: 18px; line-height: 1.1; }
+.wk-day .wk-dot { width: 6px; height: 6px; border-radius: 50%; background: transparent; margin-top: 2px; }
+.wk-day.is-part .wk-dot { background: var(--kurkuma); }
+.wk-day.is-full .wk-dot { background: var(--dill); }
+.wk-day.is-today { border-color: var(--line); }
+.wk-day.is-on { border-color: var(--rim); box-shadow: inset 0 0 0 1px var(--rim); }
+.jump { margin-top: 10px; }
+
+/* All 28 days of the plan as ticks, one group per week */
+.ruler { display: flex; gap: 2px; margin-top: 12px; }
+.tick { flex: 1; height: 6px; border-radius: 2px; background: var(--line); }
+.tick:nth-child(7n) { margin-right: 6px; }
+.tick:last-child { margin-right: 0; }
+.tick.is-part { background: var(--kurkuma); }
+.tick.is-full { background: var(--dill); }
+.tick.is-on { background: var(--rim); transform: scaleY(2.2); }
+
+.banner { margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: var(--surface); border-left: 5px solid var(--kurkuma); }
+.banner p + p { margin-top: 6px; }
+.banner .btn { margin-top: 10px; }
+
+.fridge { margin-top: 20px; padding: 12px 14px 4px; border-radius: 12px; background: var(--surface); border: 1.5px solid var(--ink); }
+.fridge h2 { font-size: 16px; }
+.fridge li { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+.fridge li:first-of-type { border-top: 0; }
+.fridge .fr-name { flex: 1; min-width: 0; font-weight: 600; }
+
+.timeline { margin-top: 18px; background: var(--surface); border-radius: 12px; }
+.tl { display: grid; grid-template-columns: 46px 1fr; gap: 0 8px; padding: 14px 14px 14px 12px; border-top: 1px solid var(--line); }
+.tl-head { display: flex; align-items: flex-start; gap: 10px; }
+.tl-heading { flex: 1; min-width: 0; }
+.tl:first-child { border-top: 0; }
+.tl-time { font-family: var(--f-label); font-weight: 700; font-size: 17px; color: var(--ink-2); padding-top: 3px; font-variant-numeric: tabular-nums; }
+.tl-main { min-width: 0; }
+.tl-kind { font-size: 14px; color: var(--ink-3); }
+.tl-title { font-weight: 650; font-size: 17px; line-height: 1.3; }
+.tl-text { color: var(--ink-2); font-size: 15px; margin-top: 2px; }
+.tl-meta { font-size: 14px; color: var(--ink-3); margin-top: 4px; }
+.tl-meta .boxes { margin-right: 6px; }
+.tl.is-done .tl-title { color: var(--ink-3); }
+.tl.is-cook { background: linear-gradient(to right, var(--paprika) 0 5px, transparent 5px); border-radius: 0; }
+.tl.is-quiet { padding-top: 10px; padding-bottom: 10px; }
+.tl.is-quiet .tl-title { font-size: 15px; font-weight: 500; }
+.tl-actions { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 8px; align-items: center; }
+.subtask { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.subtask span { flex: 1; font-size: 15px; }
+
+.daysum { margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: var(--surface); }
+.daysum-main { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 18px; }
+.daysum-main .num { font-size: 26px; }
+.daysum-main .unit { font-size: 14px; color: var(--ink-3); margin-left: 4px; font-family: var(--f-body); font-weight: 400; }
+.daysum .row { margin-top: 12px; align-items: center; }
+.steps-input { width: 120px; }
+.extra { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.extra span { flex: 1; font-size: 15px; }
+
+/* ---------- Recipes ---------- */
+.page-title { margin-bottom: 4px; }
+.list { margin-top: 12px; background: var(--surface); border-radius: 12px; }
+.list-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 14px;
+  border: 0; border-top: 1px solid var(--line); background: none; text-align: left;
+}
+.list-row:first-child { border-top: 0; }
+.lr-main { flex: 1; min-width: 0; }
+.lr-title { font-weight: 650; display: block; }
+.lr-sub { font-size: 14px; color: var(--ink-3); display: block; }
+.lr-end { font-size: 14px; color: var(--ink-2); text-align: right; white-space: nowrap; }
+.list-row .chev { width: 16px; height: 16px; color: var(--ink-3); flex: none; }
+
+.back { display: inline-flex; align-items: center; gap: 4px; margin: -6px 0 12px -6px; padding: 6px 10px 6px 4px; border: 0; background: none; color: var(--rim); font-weight: 600; border-radius: 8px; }
+.back svg { width: 18px; height: 18px; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 12px; }
+.fact .num { font-size: 22px; }
+.fact span { display: block; font-size: 13px; color: var(--ink-3); }
+.card { margin-top: 12px; padding: 4px 14px; background: var(--surface); border-radius: 12px; }
+.card > li, .card > .card-row { padding: 11px 0; border-top: 1px solid var(--line); }
+.card > li:first-child, .card > .card-row:first-child { border-top: 0; }
+.ingr-text { display: block; }
+.ingr .tag { margin-top: 5px; white-space: normal; }
+.tag { display: inline-block; flex: none; font-size: 12px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--ink-3); white-space: nowrap; }
+.tag.is-ok { border-color: var(--dill); color: var(--dill); }
+.tag.is-missing { border-color: var(--paprika); color: var(--paprika); }
+.step { display: grid; grid-template-columns: 28px 1fr; gap: 8px; }
+.step .num { font-size: 18px; color: var(--rim); }
+.note { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2); font-size: 15px; }
+.note strong { color: var(--ink); }
+.table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.table th, .table td { text-align: left; padding: 9px 0; border-top: 1px solid var(--line); }
+.table tr:first-child th { border-top: 0; font-weight: 500; color: var(--ink-3); font-size: 13px; }
+.table td.r, .table th.r { text-align: right; white-space: nowrap; padding-left: 12px; }
+
+/* ---------- Shopping and pantry ---------- */
+.weekpick { display: flex; gap: 6px; margin-top: 14px; }
+.weekpick .chip { flex: 1; padding: 0 4px; }
+.shop-item { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
+.shop-item:first-child { border-top: 0; }
+.shop-item .si-main { flex: 1; min-width: 0; }
+.shop-item .si-amount { font-family: var(--f-label); font-weight: 700; white-space: nowrap; }
+.shop-item.is-done .si-name { text-decoration: line-through; color: var(--ink-3); }
+.shop-item.is-done .si-amount { color: var(--ink-3); }
+.shop-item .check { width: 30px; height: 30px; }
+.cat-title { margin: 22px 0 0; font-size: 15px; font-weight: 650; color: var(--ink-2); }
+.icon-btn { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink-2); display: grid; place-items: center; padding: 0; }
+.icon-btn svg { width: 16px; height: 16px; }
+.stepper { display: flex; align-items: center; gap: 8px; }
+.stepper .num { min-width: 22px; text-align: center; font-size: 18px; }
+.pantry-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
+.pantry-row:first-child { border-top: 0; }
+.pantry-row .si-main { flex: 1; min-width: 0; }
+.have { min-height: 32px; padding: 0 12px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink-3); font-size: 14px; white-space: nowrap; }
+.have.is-on { border-color: var(--dill); color: var(--dill); font-weight: 600; }
+
+/* ---------- Workout ---------- */
+.ex { border-top: 1px solid var(--line); }
+.ex:first-child { border-top: 0; }
+.ex-head { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 14px; border: 0; background: none; text-align: left; }
+.ex-head .lr-main { flex: 1; min-width: 0; }
+.ex-body { padding: 0 14px 16px; }
+.demo-wrap { position: relative; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
+.demo { display: block; width: 100%; aspect-ratio: 12 / 7; }
+.fig-floor { stroke: var(--line); stroke-width: 2; }
+.fig-mat { stroke: var(--rim); stroke-width: 3; stroke-linecap: round; opacity: 0.55; }
+.fig-prop { stroke: var(--ink-3); stroke-width: 3.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.fig-limb { stroke: var(--ink); stroke-width: 5.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.fig-far { opacity: 0.36; }
+.fig-torso { stroke: var(--ink); stroke-width: 8; stroke-linecap: round; }
+.fig-head { fill: var(--ink); }
+.fig-band { stroke: var(--paprika); stroke-width: 2.5; stroke-linecap: round; }
+.cues { margin-top: 12px; }
+.cues li { display: grid; grid-template-columns: 24px 1fr; gap: 6px; padding: 4px 0; }
+.cues .num { color: var(--rim); }
+.sets { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.sets-label { font-size: 14px; color: var(--ink-2); margin-right: 2px; }
+.set {
+  width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--rim); background: var(--surface);
+  font-family: var(--f-label); font-weight: 700; font-size: 17px; color: var(--rim); padding: 0;
+}
+.set.is-done { background: var(--dill); border-color: var(--dill); color: var(--surface); }
+.ex-count { font-family: var(--f-label); font-weight: 700; color: var(--ink-3); white-space: nowrap; }
+.ex-count.is-done { color: var(--dill); }
+
+/* Rest and hold timer, shown above the tab bar */
+.timerbar {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  width: min(528px, calc(100% - 24px)); z-index: 20;
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 16px;
+  background: var(--ink); color: var(--page); border-radius: 14px;
+}
+.timerbar .num { font-size: 26px; min-width: 62px; }
+.timerbar .tb-label { flex: 1; font-size: 15px; }
+.timerbar .btn { background: transparent; border-color: var(--page); color: var(--page); min-height: 38px; }
+.timerbar.is-over { background: var(--dill); }
+
+/* ---------- Plan overview ---------- */
+.planweek { margin-top: 14px; padding: 14px; background: var(--surface); border-radius: 12px; }
+.planweek h2 { font-size: 18px; }
+.slot { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.slot:first-of-type { border-top: 0; margin-top: 6px; }
+.slot .lr-main { flex: 1; min-width: 0; }
+.plandays { display: flex; gap: 4px; margin-top: 10px; }
+
+/* ---------- Progress ---------- */
+.chart { display: block; width: 100%; height: auto; margin-top: 8px; }
+.chart .axis { stroke: var(--line); stroke-width: 1; }
+.chart .goal { stroke: var(--dill); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.chart .path { stroke: var(--rim); stroke-width: 2.5; fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.chart .dot { fill: var(--rim); }
+.chart text { fill: var(--ink-3); font-size: 11px; font-family: var(--f-body); }
+
+/* ---------- Tab bar and toast ---------- */
+.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+  background: var(--surface); border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.tabs-inner { display: flex; max-width: 560px; margin: 0 auto; }
+.tab {
+  flex: 1; min-width: 0; height: 60px; border: 0; background: none; color: var(--ink-3);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  font-size: 12px; border-top: 3px solid transparent; margin-top: -1px;
+}
+.tab svg { width: 22px; height: 22px; }
+.tab.is-on { color: var(--ink); border-top-color: var(--paprika); font-weight: 600; }
+
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(140px + env(safe-area-inset-bottom, 0px));
+  z-index: 30; max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 10px;
+  background: var(--ink); color: var(--page); font-size: 15px;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.toast.is-on { opacity: 1; }
+
+.icon { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <main id="view" class="view"><p class="loading">Učitavanje</p></main>
+</div>
+
+<div id="timer" class="timerbar" role="timer" hidden></div>
+
+<nav class="tabs" aria-label="Glavna navigacija" hidden>
+  <div class="tabs-inner">
+    <button class="tab" data-action="tab" data-tab="danas">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>
+      <span>Danas</span>
+    </button>
+    <button class="tab" data-action="tab" data-tab="recepti">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11h14v5a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z"/><path d="M3 11h18M9 7c0-1.5 1.5-1.5 1.5-3M13.5 7c0-1.5 1.5-1.5 1.5-3"/></svg>
+      <span>Recepti</span>
+    </button>
+    <button class="tab" data-action="tab" data-tab="kupovina">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h16l-1.4 9.3a2 2 0 0 1-2 1.7H7.4a2 2 0 0 1-2-1.7z"/><path d="M8.5 9l3-5M15.5 9l-3-5"/></svg>
+      <span>Kupovina</span>
+    </button>
+    <button class="tab" data-action="tab" data-tab="vezbe">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 8v8M3.5 10v4M17.5 8v8M20.5 10v4M6.5 12h11"/></svg>
+      <span>Trening</span>
+    </button>
+    <button class="tab" data-action="tab" data-tab="vise">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      <span>Više</span>
+    </button>
+  </div>
+</nav>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ==========================================================================
+   1. DATA
+   Everything the plan contains lives here: ingredients, recipes, meal
+   options and exercises. To change the plan, edit this section only.
+   ========================================================================== */
+
+// Catalog of everything that can appear on a shopping list or in the pantry.
+//   kind 'fresh'  : bought every week, not tracked in the pantry
+//   kind 'count'  : cans and packages, tracked in the pantry as a number
+//   kind 'staple' : dry goods, sauces and spices, tracked as have / don't have
+const CATALOG = {
+  // Meat and fish
+  pileci_file:   { name: 'Pileći file', sv: 'kycklingfilé', cat: 'meso', kind: 'fresh', unit: 'g' },
+  junetina:      { name: 'Mlevena junetina 12%', sv: 'nötfärs 12%', cat: 'meso', kind: 'fresh', unit: 'g' },
+  svinjski_file: { name: 'Svinjski file', sv: 'fläskfilé', cat: 'meso', kind: 'fresh', unit: 'g' },
+  losos:         { name: 'Losos', sv: 'laxfilé', cat: 'meso', kind: 'fresh', unit: 'g' },
+
+  // Dairy and eggs
+  grcki:  { name: 'Grčki jogurt 2%', sv: 'grekisk yoghurt', cat: 'mlecno', kind: 'fresh', unit: 'g' },
+  kvarg:  { name: 'Aromatizovani kvarg', sv: 'vit choklad, hallon', cat: 'mlecno', kind: 'fresh', unit: 'g' },
+  keso:   { name: 'Keso mini 1,5%', sv: 'cottage cheese', cat: 'mlecno', kind: 'fresh', unit: 'g' },
+  jaja:   { name: 'Jaja', sv: 'ägg', cat: 'mlecno', kind: 'fresh', unit: 'kom' },
+  sejk:   { name: 'Arla proteinshake choklad', sv: '1 l', cat: 'mlecno', kind: 'fresh', unit: 'opt' },
+
+  // Vegetables and fruit
+  crni_luk:   { name: 'Crni luk', sv: 'gul lök', cat: 'povrce', kind: 'fresh', unit: 'kom' },
+  crveni_luk: { name: 'Crveni luk', sv: 'rödlök', cat: 'povrce', kind: 'fresh', unit: 'kom' },
+  beli_luk:   { name: 'Beli luk', sv: 'vitlök', cat: 'povrce', kind: 'fresh' },
+  djumbir:    { name: 'Đumbir', sv: 'ingefära', cat: 'povrce', kind: 'fresh' },
+  paprika:    { name: 'Paprika', sv: 'paprika', cat: 'povrce', kind: 'fresh', unit: 'kom' },
+  paradajz:   { name: 'Paradajz', sv: 'tomater', cat: 'povrce', kind: 'fresh', unit: 'kom' },
+  krastavac:  { name: 'Krastavac', sv: 'gurka', cat: 'povrce', kind: 'fresh', unit: 'kom' },
+  iceberg:    { name: 'Iceberg salata', sv: 'isbergssallad', cat: 'povrce', kind: 'fresh', unit: 'g', head: 500 },
+  tikvica:    { name: 'Tikvica', sv: 'zucchini', cat: 'povrce', kind: 'fresh', unit: 'kom' },
+  sargarepa:  { name: 'Šargarepa', sv: 'morötter', cat: 'povrce', kind: 'fresh', unit: 'kom' },
+  krompir:    { name: 'Krompir', sv: 'potatis', cat: 'povrce', kind: 'fresh', unit: 'g' },
+  brokoli:    { name: 'Brokoli', sv: 'broccoli', cat: 'povrce', kind: 'fresh', unit: 'g' },
+  limun:      { name: 'Limun', sv: 'citron', cat: 'povrce', kind: 'fresh', unit: 'kom' },
+  limeta:     { name: 'Limeta', sv: 'lime', cat: 'povrce', kind: 'fresh', unit: 'kom' },
+  persun:     { name: 'Peršun', sv: 'persilja', cat: 'povrce', kind: 'fresh' },
+  banane:     { name: 'Banane', sv: 'bananer', cat: 'povrce', kind: 'fresh', unit: 'kom' },
+  jabuke:     { name: 'Jabuke ili kruške', sv: 'äpplen, päron', cat: 'povrce', kind: 'fresh', unit: 'kom' },
+  razeni_hleb:{ name: 'Raženi hleb', sv: 'rågbröd', cat: 'povrce', kind: 'fresh' },
+
+  // Frozen
+  wok_povrce: { name: 'Wok povrće', sv: 'wokgrönsaker', cat: 'smrznuto', kind: 'fresh', unit: 'g' },
+  bobice:     { name: 'Bobičasto voće', sv: 'frysta bär', cat: 'smrznuto', kind: 'staple' },
+
+  // Cans and packages (counted in the pantry)
+  paradajz_konz: { name: 'Seckani paradajz 400 g', sv: 'krossade tomater', cat: 'konzerve', kind: 'count', unit: 'konz' },
+  kukuruz:       { name: 'Kukuruz, mala konzerva', sv: 'majs', cat: 'konzerve', kind: 'count', unit: 'konz' },
+  leblebije:     { name: 'Leblebije', sv: 'kikärtor', cat: 'konzerve', kind: 'count', unit: 'pak' },
+  kokos:         { name: 'Kokosovo mleko light 400 ml', sv: 'kokosmjölk light', cat: 'konzerve', kind: 'count', unit: 'pak' },
+
+  // Dry goods and sauces
+  basmati:       { name: 'Basmati pirinač', sv: 'basmatiris', cat: 'suvo', kind: 'staple' },
+  bulgur:        { name: 'Bulgur', sv: 'bulgur', cat: 'suvo', kind: 'staple' },
+  rezanci:       { name: 'Rezanci', sv: 'risnudlar, äggnudlar', cat: 'suvo', kind: 'staple' },
+  ovsene:        { name: 'Ovsene pahuljice', sv: 'havregryn', cat: 'suvo', kind: 'staple' },
+  orasi:         { name: 'Orasi ili bademi', sv: 'valnötter, mandlar', cat: 'suvo', kind: 'staple' },
+  galete:        { name: 'Kukuruzne galete', sv: 'majskakor', cat: 'suvo', kind: 'staple' },
+  kikiriki:      { name: 'Kikiriki', sv: 'jordnötter', cat: 'suvo', kind: 'staple' },
+  tahini:        { name: 'Tahini', sv: 'tahini', cat: 'suvo', kind: 'staple' },
+  soja_sos:      { name: 'Soja sos', sv: 'sojasås', cat: 'suvo', kind: 'staple' },
+  susamovo_ulje: { name: 'Susamovo ulje', sv: 'sesamolja', cat: 'suvo', kind: 'staple' },
+  sirce:         { name: 'Pirinčano sirće', sv: 'risvinäger', cat: 'suvo', kind: 'staple' },
+  skrob:         { name: 'Kukuruzni skrob', sv: 'majsstärkelse', cat: 'suvo', kind: 'staple' },
+  susam:         { name: 'Susam', sv: 'sesamfrön', cat: 'suvo', kind: 'staple' },
+  med:           { name: 'Med', sv: 'honung', cat: 'suvo', kind: 'staple' },
+  senf:          { name: 'Senf', sv: 'senap', cat: 'suvo', kind: 'staple' },
+  maslinovo:     { name: 'Maslinovo ulje', sv: 'olivolja', cat: 'suvo', kind: 'staple' },
+  ulje:          { name: 'Ulje za kuvanje', sv: 'rapsolja', cat: 'suvo', kind: 'staple' },
+  pire:          { name: 'Paradajz pire', sv: 'tomatpuré', cat: 'suvo', kind: 'staple' },
+  kari_pasta:    { name: 'Massaman kari pasta', sv: 'massaman currypasta', cat: 'suvo', kind: 'staple' },
+
+  // Spices
+  garam_masala: { name: 'Garam masala', sv: 'garam masala', cat: 'zacini', kind: 'staple' },
+  kumin:        { name: 'Kumin', sv: 'spiskummin', cat: 'zacini', kind: 'staple' },
+  kurkuma:      { name: 'Kurkuma', sv: 'gurkmeja', cat: 'zacini', kind: 'staple' },
+  aleva:        { name: 'Aleva paprika, slatka', sv: 'paprikapulver', cat: 'zacini', kind: 'staple' },
+  dimljena:     { name: 'Dimljena paprika', sv: 'rökt paprikapulver', cat: 'zacini', kind: 'staple' },
+  cili:         { name: 'Čili ili ljuta paprika', sv: 'chili', cat: 'zacini', kind: 'staple' },
+  korijander:   { name: 'Mleveni korijander', sv: 'koriander', cat: 'zacini', kind: 'staple' },
+  origano:      { name: 'Origano', sv: 'oregano', cat: 'zacini', kind: 'staple' },
+  cimet:        { name: 'Cimet', sv: 'kanel', cat: 'zacini', kind: 'staple' },
+  lovor:        { name: 'Lovor', sv: 'lagerblad', cat: 'zacini', kind: 'staple' }
+};
+
+const CATEGORIES = [
+  ['meso', 'Meso i riba'],
+  ['mlecno', 'Mlečno i jaja'],
+  ['povrce', 'Povrće, voće i hleb'],
+  ['smrznuto', 'Zamrznuto'],
+  ['konzerve', 'Konzerve i pakovanja'],
+  ['suvo', 'Suvo i sosovi'],
+  ['zacini', 'Začini']
+];
+
+// Pantry items assumed to be at home on first start (everything else starts empty).
+const PANTRY_DEFAULT_HAVE = ['ulje', 'maslinovo', 'senf', 'med', 'galete',
+  'garam_masala', 'kumin', 'kurkuma', 'aleva', 'dimljena', 'cili', 'korijander', 'origano', 'cimet', 'lovor'];
+
+// Main dishes. Every recipe makes 4 portions. In `ingredients`, `t` is the text
+// shown in the recipe and `use` lists [catalog id, amount] pairs for the shopping list.
+const RECIPES = {
+  indijska: {
+    title: 'Indijska piletina u paradajz sosu',
+    short: 'Indijska piletina',
+    side: 'sa basmati pirinčem',
+    set: 'A', kcal: 495, protein: 46, minutes: 40,
+    ingredients: [
+      { t: '600 g pilećeg filea, na kocke', use: [['pileci_file', 600]] },
+      { t: '2 glavice crnog luka', use: [['crni_luk', 2]] },
+      { t: '3 čena belog luka i 2 cm đumbira', use: [['beli_luk'], ['djumbir']] },
+      { t: '1 kašika ulja', use: [['ulje']] },
+      { t: '1 konzerva seckanog paradajza (400 g)', use: [['paradajz_konz', 1]] },
+      { t: '2 kašike paradajz pirea', use: [['pire']] },
+      { t: '2 kašičice garam masale', use: [['garam_masala']] },
+      { t: 'Po 1 kašičica kumina, kurkume i aleve paprike', use: [['kumin'], ['kurkuma'], ['aleva']] },
+      { t: 'Čili i so po ukusu', use: [['cili']] },
+      { t: '200 g grčkog jogurta 2%', use: [['grcki', 200]] },
+      { t: '180 g basmati pirinča (suvog)', use: [['basmati']] },
+      { t: '2 paprike i 1 tikvica, na kocke', use: [['paprika', 2], ['tikvica', 1]] }
+    ],
+    steps: [
+      'Luk proprži na ulju 5 do 6 minuta. Dodaj beli luk, đumbir i začine, mešaj 1 minut.',
+      'Dodaj paradajz i pire, kuvaj 10 minuta, pa izblendaj.',
+      'U istoj šerpi kratko proprži piletinu, vrati sos i kuvaj 10 do 12 minuta.',
+      'Papriku i tikvicu dodaj u sos poslednjih 8 minuta.',
+      'Skloni sa vatre i umešaj jogurt. Pirinač skuvaj u rice cookeru.'
+    ],
+    work: 'Sve ide u jednu kutiju i greje se u mikrotalasnoj.',
+    note: 'Sa batakom bez kosti i kože (kycklinglårfilé) je sočnije, ali ima oko 60 kcal više po porciji.'
+  },
+
+  meksicka: {
+    title: 'Meksička činija sa mlevenom junetinom',
+    short: 'Meksička činija',
+    side: 'sa pirinčem i salatom',
+    set: 'A', kcal: 500, protein: 35, minutes: 35,
+    ingredients: [
+      { t: '500 g mlevene junetine 12%', use: [['junetina', 500]] },
+      { t: '1 glavica crnog luka', use: [['crni_luk', 1]] },
+      { t: '2 čena belog luka', use: [['beli_luk']] },
+      { t: '2 paprike, na kocke', use: [['paprika', 2]] },
+      { t: '1 konzerva seckanog paradajza (400 g)', use: [['paradajz_konz', 1]] },
+      { t: '150 g kukuruza iz konzerve, oceđenog', use: [['kukuruz', 1]] },
+      { t: 'Po 2 kašičice kumina i aleve paprike, 1 kašičica origana, čili, so', use: [['kumin'], ['aleva'], ['origano'], ['cili']] },
+      { t: '120 g pirinča (suvog)', use: [['basmati']] },
+      { t: '1 kašičica ulja', use: [['ulje']] },
+      { t: 'Uz svaku porciju: 100 g iceberga i pola paradajza', use: [['iceberg', 400], ['paradajz', 2]] },
+      { t: 'Uz svaku porciju: 50 g grčkog jogurta 2% i malo limete', use: [['grcki', 200], ['limeta', 1]] }
+    ],
+    steps: [
+      'Meso proprži na jakoj vatri bez dodatnog ulja i ocedi višak masti.',
+      'Dodaj luk, beli luk, papriku i začine, prži 5 minuta.',
+      'Dodaj paradajz i kukuruz, krčkaj 15 minuta.',
+      'Pirinač skuvaj posebno.'
+    ],
+    work: 'Meso i pirinač u jednu kutiju (greje se), salata i jogurt u drugu.'
+  },
+
+  shawarma: {
+    title: 'Piletina shawarma',
+    short: 'Piletina shawarma',
+    side: 'sa bulgurom i salatom',
+    set: 'A', kcal: 465, protein: 48, minutes: 40,
+    ingredients: [
+      { t: '600 g pilećeg filea ili bataka bez kosti i kože', use: [['pileci_file', 600]] },
+      { t: 'Marinada: 100 g grčkog jogurta 2%, 1 kašika ulja, sok pola limuna, 3 čena belog luka', use: [['grcki', 100], ['ulje'], ['limun', 1], ['beli_luk']] },
+      { t: 'Začini za marinadu: po 2 kašičice kumina i aleve paprike, 1 kašičica korijandera, pola kašičice kurkume, prstohvat cimeta', use: [['kumin'], ['aleva'], ['korijander'], ['kurkuma'], ['cimet']] },
+      { t: '160 g bulgura (suvog)', use: [['bulgur']] },
+      { t: 'Salata: 2 paradajza, 1 krastavac, 1 crveni luk, 300 g iceberga, peršun, limun', use: [['paradajz', 2], ['krastavac', 1], ['crveni_luk', 1], ['iceberg', 300], ['persun'], ['limun', 1]] },
+      { t: 'Sos: 200 g grčkog jogurta 2%, 1 kašika tahinija, 1 čen belog luka, limun', use: [['grcki', 200], ['tahini']] }
+    ],
+    steps: [
+      'Piletinu mariniraj najmanje 30 minuta (može i preko noći).',
+      'File preseci po dužini na tanje šnicle, batak može ceo. Peci u air fryeru na 190 stepeni 12 do 15 minuta, okreni na pola i proveri da je pečeno do kraja. Iseci na trake.',
+      'Bulgur skuvaj u rice cookeru ili prelij kipućom vodom (1:2) i poklopi 15 minuta.',
+      'Iseckaj salatu i umešaj sos.'
+    ],
+    work: 'Piletina i bulgur u jednu kutiju, salata i sos u drugu.',
+    variants: [
+      ['Pileći file', 465, 48],
+      ['Batak bez kosti i kože', 525, 44],
+      ['Batak sa kožom, bez kosti', 615, 41]
+    ],
+    note: 'Kožu je najbolje skinuti pre mariniranja. Ako kupuješ batak sa kosti, uzmi oko 800 g da dobiješ 600 g mesa.'
+  },
+
+  paprike: {
+    title: 'Lenje punjene paprike',
+    short: 'Lenje punjene paprike',
+    side: 'sve iz jedne šerpe',
+    set: 'B', kcal: 490, protein: 34, minutes: 40,
+    ingredients: [
+      { t: '500 g mlevene junetine 12%', use: [['junetina', 500]] },
+      { t: '4 paprike, na kocke', use: [['paprika', 4]] },
+      { t: '1 glavica crnog luka, 1 šargarepa, 2 čena belog luka', use: [['crni_luk', 1], ['sargarepa', 1], ['beli_luk']] },
+      { t: '120 g pirinča (suvog)', use: [['basmati']] },
+      { t: '1 konzerva seckanog paradajza (400 g)', use: [['paradajz_konz', 1]] },
+      { t: '2 kašike paradajz pirea', use: [['pire']] },
+      { t: '1 kašičica ulja, 1 kašika aleve paprike, lovor, so, biber, peršun', use: [['ulje'], ['aleva'], ['lovor'], ['persun']] },
+      { t: 'Oko 500 ml vode' },
+      { t: 'Uz svaku porciju: 50 g grčkog jogurta 2% i salata od krastavca', use: [['grcki', 200], ['krastavac', 2]] }
+    ],
+    steps: [
+      'Meso proprži na ulju, dodaj luk, šargarepu i paprike, prži 5 minuta.',
+      'Dodaj začine, pirinač, paradajz i vodu.',
+      'Poklopi i krčkaj 20 do 25 minuta, dok pirinač ne omekša. Na kraju dodaj peršun.'
+    ],
+    work: 'Jelo u jednu kutiju, jogurt i salata posebno.'
+  },
+
+  wok: {
+    title: 'Azijski wok sa piletinom i rezancima',
+    short: 'Azijski wok',
+    side: 'sa mnogo povrća',
+    set: 'B', kcal: 470, protein: 41, minutes: 30,
+    ingredients: [
+      { t: '600 g pilećeg filea, na trake', use: [['pileci_file', 600]] },
+      { t: '750 g wok povrća (smrznuto) ili sveže: brokoli, šargarepa, paprika', use: [['wok_povrce', 750]] },
+      { t: '160 g rezanaca (suvih) ili isto toliko basmati pirinča', use: [['rezanci']] },
+      { t: 'Sos: 4 kašike soja sosa, 1 kašika meda, 1 kašika pirinčanog sirćeta', use: [['soja_sos'], ['med'], ['sirce']] },
+      { t: 'Za sos još: 2 čena belog luka, 2 cm đumbira, 1 kašičica susamovog ulja, čili', use: [['beli_luk'], ['djumbir'], ['susamovo_ulje'], ['cili']] },
+      { t: '1 kašičica kukuruznog skroba razmućena u 100 ml vode', use: [['skrob']] },
+      { t: '1 kašika ulja za prženje i 1 kašika susama', use: [['ulje'], ['susam']] }
+    ],
+    steps: [
+      'Umešaj sos.',
+      'Piletinu prži na jakoj vatri 5 do 6 minuta, pa je izvadi.',
+      'Povrće prži 4 do 5 minuta, da ostane hrskavo.',
+      'Vrati piletinu, sipaj sos i kuvaj 2 minuta dok se ne zgusne.',
+      'Rezance skuvaj po uputstvu i umešaj. Pospi susamom.'
+    ],
+    work: 'Sve u jednu kutiju. Pre grejanja dodaj kašiku vode da rezanci ne budu suvi.'
+  },
+
+  muckalica: {
+    title: 'Mućkalica od svinjskog filea',
+    short: 'Mućkalica',
+    side: 'sa krompirom',
+    set: 'B', kcal: 440, protein: 40, minutes: 45,
+    ingredients: [
+      { t: '600 g svinjskog filea, na kocke', use: [['svinjski_file', 600]] },
+      { t: '2 glavice crnog luka i 3 čena belog luka', use: [['crni_luk', 2], ['beli_luk']] },
+      { t: '4 paprike (crvene i žute), na trake', use: [['paprika', 4]] },
+      { t: '1 konzerva seckanog paradajza (400 g)', use: [['paradajz_konz', 1]] },
+      { t: '1 kašika ulja za meso i 1 kašičica za krompir', use: [['ulje']] },
+      { t: '1 kašika aleve paprike, ljuta paprika po ukusu, so, biber, peršun', use: [['aleva'], ['cili'], ['persun']] },
+      { t: '600 g krompira', use: [['krompir', 600]] },
+      { t: 'Uz svaku porciju: salata od krastavca', use: [['krastavac', 2]] }
+    ],
+    steps: [
+      'Meso zapeci na ulju na jakoj vatri 4 do 5 minuta, pa ga izvadi.',
+      'Luk i paprike dinstaj 10 minuta. Dodaj beli luk, začine i paradajz.',
+      'Vrati meso i krčkaj 15 do 20 minuta.',
+      'Krompir: kockice u air fryeru na 200 stepeni 15 do 18 minuta, ili kuvan.'
+    ],
+    work: 'Za posao se bolje podgreva kuvan krompir ili pirinač (150 g krompira menjaš sa 35 g suvog pirinča).'
+  },
+
+  massaman: {
+    title: 'Massaman kari sa piletinom i krompirom',
+    short: 'Massaman kari',
+    side: 'sa brokolijem i light kokosovim mlekom',
+    set: 'Zamena', kcal: 460, protein: 42, minutes: 35,
+    ingredients: [
+      { t: '600 g pilećeg filea, na kocke', use: [['pileci_file', 600]] },
+      { t: '400 ml light kokosovog mleka', use: [['kokos', 1]] },
+      { t: '50 g massaman kari paste (oko 2 pune kašike)', use: [['kari_pasta']] },
+      { t: '600 g krompira, na kocke', use: [['krompir', 600]] },
+      { t: '300 g brokolija', use: [['brokoli', 300]] },
+      { t: '1 glavica crnog luka', use: [['crni_luk', 1]] },
+      { t: '20 g kikirikija', use: [['kikiriki']] },
+      { t: '1 kašičica ulja, soja ili riblji sos, limeta', use: [['ulje'], ['soja_sos'], ['limeta', 1]] }
+    ],
+    steps: [
+      'Luk i pastu proprži na ulju 1 do 2 minuta.',
+      'Dodaj kokosovo mleko, 200 ml vode i krompir, kuvaj 12 minuta.',
+      'Dodaj piletinu i kuvaj 8 minuta, pa brokoli još 4 do 5 minuta.',
+      'Začini soja sosom i limetom, pospi kikirikijem.'
+    ],
+    work: 'Sve ide u jednu kutiju i greje se u mikrotalasnoj.',
+    note: 'Računato sa kokosovim mlekom od 65 kcal na 100 ml. Proveri deklaraciju, razlike među markama su velike.'
+  }
+};
+
+const DISH_IDS = Object.keys(RECIPES);
+
+// Dishes for each of the four weeks: [dish 1, dish 2, dish 3]
+const DEFAULT_DISHES = [
+  ['indijska', 'meksicka', 'shawarma'],
+  ['paprike', 'wok', 'muckalica'],
+  ['indijska', 'meksicka', 'shawarma'],
+  ['paprike', 'wok', 'muckalica']
+];
+
+// Quick dinners, one portion each. `group` says on which evening they are offered.
+const QUICK = {
+  losos: {
+    group: 'riba', name: 'Losos sa krompirom', kcal: 455, protein: 35,
+    text: '125 g lososa u air fryeru na 180 stepeni 8 do 10 minuta, 150 g krompira, velika salata (iceberg, krastavac, paradajz) i sos od 50 g grčkog jogurta, mirođije i limuna.'
+  },
+  bela_riba: {
+    group: 'riba', name: 'Bela riba sa povrćem', kcal: 455, protein: 47,
+    text: '200 g bele ribe (torsk, sej), 200 g krompira, 250 g paprike i tikvice iz air fryera, 1 kašičica maslinovog ulja i 50 g grčkog jogurta.'
+  },
+  salata: {
+    group: 'salata', name: 'Obrok salata', kcal: 490, protein: 44,
+    text: '200 g iceberga, 300 g povrća (paprika, paradajz, krastavac), 50 g kukuruza, 120 g pilećeg filea, preliv od 100 g grčkog jogurta 2%, senfa, limuna i 1 kašičice maslinovog ulja, uz 1 krišku raženog hleba.'
+  },
+  omlet: {
+    group: 'salata', name: 'Omlet sa kesom', kcal: 460, protein: 36,
+    text: '2 jaja, 150 g keso mini, 200 g povrća, 1 kašičica ulja i 1 kriška raženog hleba.'
+  },
+  slobodno: {
+    group: 'salata', name: 'Slobodniji obrok', kcal: null, protein: null,
+    text: 'Restoran ili društvo. Pojedi normalnu porciju i sutra nastavi po planu.'
+  }
+};
+
+const BREAKFASTS = {
+  D1: { name: 'Kvarg i banana', kcal: 320, protein: 24, text: '200 g aromatizovanog kvarga, 1 banana i 15 g oraha ili badema.' },
+  D2: { name: 'Kvarg i ovsene', kcal: 340, protein: 27, text: '200 g aromatizovanog kvarga, 30 g ovsenih pahuljica, 100 g bobičastog voća i 10 g oraha.' },
+  D3: { name: 'Jaja i keso', kcal: 360, protein: 29, text: '2 kuvana jaja, 1 kriška raženog hleba (oko 45 g), 100 g keso mini i paprika ili krastavac.' },
+  D4: { name: 'Jaje i kvarg', kcal: 305, protein: 28, text: '1 kuvano jaje, 1 banana i 200 g aromatizovanog kvarga.' },
+  D5: { name: 'Jaje i šejk', kcal: 310, protein: 22, text: '1 kuvano jaje, 1 banana i 250 ml Arla proteinshake choklad.' }
+};
+
+const SNACKS = {
+  U1: { name: 'Voćka i orasi', kcal: 170, protein: 3, text: 'Jabuka ili kruška i 15 g badema ili oraha.' },
+  U2: { name: 'Galete i humus', kcal: 145, protein: 6, text: '2 kukuruzne galete i 80 g lakog humusa.' },
+  U3: { name: 'Kvarg i voćka', kcal: 170, protein: 15, text: '1 čaša aromatizovanog kvarga (150 g) i voćka.' },
+  U4: { name: 'Povrće i humus', kcal: 175, protein: 8, text: 'Šargarepa i paprika na štapiće i 100 g lakog humusa.' },
+  U5: { name: 'Jaje i voćka', kcal: 155, protein: 7, text: '1 kuvano jaje i voćka.' },
+  U6: { name: 'Šejk i voćka', kcal: 170, protein: 14, text: '250 ml Arla proteinshake choklad i mala voćka.' }
+};
+
+// Light hummus, shown in the recipe list and used by two snacks.
+const HUMMUS = {
+  title: 'Laki humus',
+  kcal: 105, protein: 6,
+  lead: 'Oko 105 kcal i 6 g proteina na 100 g. Klasičan humus, sa više tahinija i maslinovim uljem, obično ima 220 do 300 kcal. Dobije se oko 435 g, a u frižideru traje 4 do 5 dana.',
+  ingredients: [
+    '1 pakovanje leblebija (oko 230 g oceđenih)',
+    '1 kašika tahinija (15 g)',
+    '100 g grčkog jogurta 2%, umesto maslinovog ulja',
+    'Sok 1 limuna i 1 čen belog luka',
+    'Pola kašičice kumina, so',
+    '3 do 5 kašika ledene vode',
+    'Odozgo: dimljena ili aleva paprika'
+  ],
+  steps: [
+    'Leblebije isperi i zagrej 1 minut u mikrotalasnoj sa malo vode. Tople se lakše melju u glatku masu.',
+    'Blendaj sve sastojke 3 do 4 minuta i dodaj ledenu vodu dok humus ne postane kremast.'
+  ],
+  note: 'Varijanta: dodaj 1 pečenu crvenu papriku ili 150 g pečene šargarepe. Biće još lakši i malo slađi.'
+};
+
+// Bought every week for breakfasts, snacks, hummus and the two quick dinners.
+const WEEKLY_BASICS = [
+  ['kvarg', 1100], ['keso', 400], ['jaja', 12], ['sejk'],
+  ['banane', 4], ['jabuke', 5], ['razeni_hleb'],
+  ['losos', 125], ['krompir', 200], ['pileci_file', 120], ['grcki', 250],
+  ['iceberg', 300], ['paprika', 2], ['paradajz', 2], ['krastavac', 1], ['sargarepa', 2],
+  ['leblebije', 1], ['limun', 1],
+  ['ovsene'], ['orasi'], ['bobice'], ['tahini'], ['kumin'], ['senf'], ['maslinovo'], ['galete']
+];
+
+// Strength workout: the same eight exercises three times a week.
+const EXERCISES = [
+  {
+    id: 'most', name: 'Most za zadnjicu', dose: '3 x 12 do 15', sets: 3,
+    cues: [
+      'Lezi na leđa, stopala u širini kukova, pete blizu zadnjice.',
+      'Stisni zadnjicu i podigni kukove dok telo ne bude u ravnoj liniji od ramena do kolena.',
+      'Zadrži 1 sekundu gore, pa se spuštaj sporo.'
+    ],
+    watch: 'Ne izvijaj donji deo leđa, rebra drži spuštena.',
+    harder: 'Teže: traka preko kukova ili jedna noga.',
+    video: 'glute bridge proper form'
+  },
+  {
+    id: 'dizanje', name: 'Mrtvo dizanje sa trakom', dose: '3 x 12 do 15', sets: 3,
+    cues: [
+      'Stani na sredinu trake, krajeve drži u rukama, stopala u širini kukova.',
+      'Guraj kukove unazad kao da zadnjicom zatvaraš vrata. Kolena su blago savijena, leđa ravna.',
+      'Spusti ruke do potkolenica, pa se ispravi stiskom zadnjice.'
+    ],
+    watch: 'Pokret ide iz kukova. Ako se leđa krive ili se pretvara u čučanj, skrati pokret.',
+    video: 'resistance band romanian deadlift form'
+  },
+  {
+    id: 'cucanj', name: 'Čučanj do stolice', dose: '3 x 10 do 12', sets: 3,
+    cues: [
+      'Stani ispred stolice, stopala malo šire od kukova.',
+      'Sedaj unazad sporo, oko 3 sekunde, dok ne dodirneš stolicu. Nemoj da padneš na nju.',
+      'Ustani guranjem kroz pete. Kolena prate pravac prstiju.'
+    ],
+    watch: 'Kolena: idi samo do dubine bez bola. Viša stolica ili jastuk smanjuju dubinu.',
+    video: 'box squat to chair beginner form'
+  },
+  {
+    id: 'veslanje', name: 'Veslanje sa trakom', dose: '3 x 12 do 15', sets: 3,
+    cues: [
+      'Sedi na pod, noge ispružene sa blago savijenim kolenima, traka oko stopala.',
+      'Vuci laktove unazad uz telo i spoji lopatice.',
+      'Vraćaj ruke sporo, leđa ostaju uspravna.'
+    ],
+    watch: 'Ne naginji se unazad i ne podiži ramena ka ušima.',
+    video: 'seated resistance band row form'
+  },
+  {
+    id: 'sklek', name: 'Sklek na povišenju', dose: '3 x 8 do 12', sets: 3,
+    cues: [
+      'Ruke stavi na ivicu stola ili kauča, malo šire od ramena. Telo je u ravnoj liniji.',
+      'Spuštaj grudi ka ivici, laktovi idu ukoso unazad.',
+      'Odgurni se do ispruženih ruku.'
+    ],
+    watch: 'Kukovi ne smeju da propadnu. Stisni stomak i zadnjicu.',
+    harder: 'Lakše: više povišenje. Teže: niže povišenje.',
+    video: 'incline push up proper form'
+  },
+  {
+    id: 'hod', name: 'Hod u stranu sa trakom', dose: '3 x 10 koraka u svaku stranu', sets: 3,
+    cues: [
+      'Traka je iznad kolena, stopala u širini kukova, blagi polučučanj.',
+      'Zakorači u stranu jednom nogom, pa privuci drugu. Traka ostaje zategnuta.',
+      'Posle 10 koraka vrati se istim putem.'
+    ],
+    watch: 'Kolena ne padaju ka unutra, trup je miran. Ova vežba jača kukove, što rasterećuje kolena.',
+    video: 'lateral band walk proper form'
+  },
+  {
+    id: 'bug', name: 'Dead bug', dose: '3 x 8 po strani', sets: 3,
+    cues: [
+      'Lezi na leđa, ruke ka plafonu, kukovi i kolena pod pravim uglom.',
+      'Polako spuštaj suprotnu ruku i nogu ka podu.',
+      'Vrati se u početni položaj i promeni stranu.'
+    ],
+    watch: 'Donji deo leđa ostaje na podu. Ako se odvaja, skrati pokret.',
+    video: 'dead bug exercise proper form'
+  },
+  {
+    id: 'plank', name: 'Plank', dose: '3 x 20 do 40 sekundi', sets: 3, hold: true,
+    cues: [
+      'Podlaktice su na podu, laktovi ispod ramena.',
+      'Telo je u ravnoj liniji od glave do peta. Stisni stomak i zadnjicu.',
+      'Diši normalno i prekini kada kukovi počnu da padaju.'
+    ],
+    watch: 'Bolje kraće i pravilno nego duže sa spuštenim kukovima.',
+    harder: 'Lakše: osloni se na kolena.',
+    video: 'forearm plank proper form'
+  }
+];
+
+/* ==========================================================================
+   2. STORAGE
+   Inside Claude the app uses the artifact storage (window.storage).
+   On a normal web page (for example GitHub Pages) it uses the browser's
+   localStorage. If neither works, the app still runs but forgets on reload.
+   ========================================================================== */
+
+const STORAGE_KEY = 'plan-ishrane-v1';
+
+const store = {
+  async load() {
+    if (window.storage) {
+      try {
+        const res = await window.storage.get(STORAGE_KEY, false);
+        return res && res.value ? JSON.parse(res.value) : null;
+      } catch (err) {
+        return null;                      // a missing key throws
+      }
+    }
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (err) {
+      return null;
+    }
+  },
+
+  async save(data) {
+    const text = JSON.stringify(data);
+    if (window.storage) {
+      try {
+        await window.storage.set(STORAGE_KEY, text, false);
+        return true;
+      } catch (err) {
+        return false;
+      }
+    }
+    try {
+      window.localStorage.setItem(STORAGE_KEY, text);
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+};
+
+
+/* ==========================================================================
+   3. STATE AND PLAN LOGIC
+   ========================================================================== */
+
+let state = null;                 // everything that is saved
+
+// What is currently on screen (not saved)
+const ui = {
+  tab: 'danas',
+  day: 0,                         // plan day shown on the "Danas" tab, 0..27
+  recipe: null,                   // open recipe id
+  recipeBack: 'recepti',          // tab to return to when the recipe is closed
+  shopWeek: 0,
+  shopView: 'lista',              // 'lista' | 'ostava'
+  more: null,                     // open page on the "Više" tab
+  exercise: null,                 // open exercise id
+  swap: null,                     // { week, slot } while choosing another dish
+  pickOpen: null,                 // meal whose options are shown on the "Danas" tab
+  confirmReset: false,
+  demoPaused: false
+};
+
+function defaultState() {
+  const pantry = {};
+  for (const id of PANTRY_DEFAULT_HAVE) pantry[id] = true;
+  return {
+    version: 1,
+    startDate: null,              // 'YYYY-MM-DD', the first cooking day
+    dishes: DEFAULT_DISHES.map(week => week.slice()),
+    days: {},                     // plan day -> { done: {}, pick: {}, sets: {}, steps, extra }
+    pantry,                       // catalog id -> number (cans) or true/false (staples)
+    custom: [],                   // the user's own pantry items: { id, name, qty }
+    shop: {},                     // week -> { checked: {}, extra: [] }
+    ledger: {},                   // pantry changes made by check marks, so they can be undone
+    weights: [],                  // { date, kg }
+    goal: null,
+    settings: { rest: 75, hold: 30 }
+  };
+}
+
+const EMPTY_DAY = Object.freeze({ done: Object.freeze({}), pick: Object.freeze({}), sets: Object.freeze({}) });
+
+// Read a day without creating it
+function peekDay(i) {
+  return state.days[i] || EMPTY_DAY;
+}
+
+// Get a day for writing
+function getDay(i) {
+  if (!state.days[i]) state.days[i] = { done: {}, pick: {}, sets: {} };
+  return state.days[i];
+}
+
+let saveTimer = null;
+let saveWarned = false;
+
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    const ok = await store.save(state);
+    if (!ok && !saveWarned) {
+      saveWarned = true;
+      toast('Ovaj pregledač ne dozvoljava čuvanje podataka.');
+    }
+  }, 300);
+}
+
+// ---------- Dates ----------
+
+const WEEKDAYS = ['nedelja', 'ponedeljak', 'utorak', 'sreda', 'četvrtak', 'petak', 'subota'];
+const WEEKDAYS_SHORT = ['ned', 'pon', 'uto', 'sre', 'čet', 'pet', 'sub'];
+const WEEKDAYS_ACC = ['nedelju', 'ponedeljak', 'utorak', 'sredu', 'četvrtak', 'petak', 'subotu'];   // "u nedelju"
+const MONTHS = ['januar', 'februar', 'mart', 'april', 'maj', 'jun', 'jul', 'avgust', 'septembar', 'oktobar', 'novembar', 'decembar'];
+
+const pad2 = n => String(n).padStart(2, '0');
+const toISO = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+
+function parseISO(text) {
+  const [y, m, d] = text.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function addDays(date, n) {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + n);
+  return copy;
+}
+
+function daysBetween(a, b) {
+  const ua = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+  const ub = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+  return Math.round((ub - ua) / 86400000);
+}
+
+const dateOfDay = i => addDays(parseISO(state.startDate), i);
+const todayIndex = () => daysBetween(parseISO(state.startDate), new Date());
+const longDate = d => WEEKDAYS[d.getDay()] + ', ' + d.getDate() + '. ' + MONTHS[d.getMonth()];
+const shortDate = d => d.getDate() + '.' + (d.getMonth() + 1) + '.';
+
+// Serbian plural: 1 dan, 2 dana, 5 dana
+function plural(n, one, few, many) {
+  const d = n % 10, h = n % 100;
+  if (d === 1 && h !== 11) return one;
+  if (d >= 2 && d <= 4 && (h < 12 || h > 14)) return few;
+  return many;
+}
+
+// ---------- The weekly rhythm ----------
+
+const PLAN_DAYS = 28;
+const COOK_DAY = [0, 2, 4];            // day of the week when dish 1, 2 and 3 is cooked
+const WORKOUT_DAYS = [1, 3, 5];
+
+// What is eaten on each day of the week. `slot` is the dish (0, 1, 2) and
+// `box` says which of its four portions this is.
+const WEEK_PATTERN = [
+  { rucak: { prev: true },         vecera: { slot: 0, box: 1, cook: true } },
+  { rucak: { slot: 0, box: 2 },    vecera: { quick: 'riba' } },
+  { rucak: { slot: 0, box: 3 },    vecera: { slot: 1, box: 1, cook: true } },
+  { rucak: { slot: 0, box: 4 },    vecera: { slot: 1, box: 2 } },
+  { rucak: { slot: 1, box: 3 },    vecera: { slot: 2, box: 1, cook: true } },
+  { rucak: { slot: 1, box: 4 },    vecera: { slot: 2, box: 2 } },
+  { rucak: { slot: 2, box: 3 },    vecera: { quick: 'salata' } }
+];
+
+// The four meals that empty the boxes of each dish: [day of the week, meal]
+const BOX_MEALS = [
+  [[0, 'vecera'], [1, 'rucak'], [2, 'rucak'], [3, 'rucak']],
+  [[2, 'vecera'], [3, 'vecera'], [4, 'rucak'], [5, 'rucak']],
+  [[4, 'vecera'], [5, 'vecera'], [6, 'rucak'], [7, 'rucak']]
+];
+
+const weekOf = i => Math.floor(i / 7);
+const isWorkoutDay = i => WORKOUT_DAYS.includes(i % 7);
+
+// Lunch or dinner on plan day i: a boxed dish or a quick meal
+function mealFor(i, which) {
+  const week = weekOf(i);
+  const p = WEEK_PATTERN[i % 7][which];
+  if (p.quick) return { type: 'quick', group: p.quick };
+  if (p.prev) {
+    if (week === 0) return { type: 'quick', group: 'salata' };     // nothing cooked yet
+    return { type: 'dish', week: week - 1, slot: 2, box: 4, dishId: state.dishes[week - 1][2] };
+  }
+  return { type: 'dish', week, slot: p.slot, box: p.box, cook: !!p.cook, dishId: state.dishes[week][p.slot] };
+}
+
+// The chosen option for a meal, or a sensible default
+function pickOf(i, key) {
+  const saved = peekDay(i).pick[key];
+  if (saved) return saved;
+  if (key === 'dorucak') {
+    const weekday = dateOfDay(i).getDay();
+    return weekday === 0 || weekday === 6 ? 'D3' : ['D1', 'D2', 'D4', 'D1', 'D2'][weekday - 1];
+  }
+  if (key === 'uzina') return ['U1', 'U3', 'U2', 'U1', 'U4', 'U3', 'U5'][i % 7];
+  return mealFor(i, key).group === 'riba' ? 'losos' : 'salata';
+}
+
+// Lunch or dinner with its name and numbers filled in
+function mealInfo(i, which) {
+  const meal = mealFor(i, which);
+  if (meal.type === 'dish') {
+    const r = RECIPES[meal.dishId];
+    return { ...meal, title: r.short, kcal: r.kcal, protein: r.protein };
+  }
+  const id = pickOf(i, which);
+  const q = QUICK[id];
+  return { ...meal, pickId: id, title: q.name, text: q.text, kcal: q.kcal, protein: q.protein };
+}
+
+function dayTotals(i) {
+  let kcal = 20, protein = 1, open = false;          // the morning tea with milk
+  const add = x => { kcal += x.kcal; protein += x.protein; };
+  add(BREAKFASTS[pickOf(i, 'dorucak')]);
+  add(SNACKS[pickOf(i, 'uzina')]);
+  for (const which of ['rucak', 'vecera']) {
+    const meal = mealInfo(i, which);
+    if (meal.kcal === null) open = true; else add(meal);
+  }
+  if (peekDay(i).extra) kcal += 175;
+  return { kcal, protein, open };
+}
+
+// Tasks that count toward the day's progress
+function dayTasks(i) {
+  const tasks = ['dorucak', 'rucak', 'setnja1', 'uzina', 'vecera', 'setnja2'];
+  if (mealFor(i, 'vecera').cook) tasks.push('kuvanje');
+  if (isWorkoutDay(i)) tasks.push('trening');
+  return tasks;
+}
+
+function dayProgress(i) {
+  const done = peekDay(i).done;
+  const tasks = dayTasks(i);
+  return { done: tasks.filter(t => done[t]).length, total: tasks.length };
+}
+
+// ---------- Boxes in the fridge ----------
+
+const isCooked = (week, slot) => !!peekDay(week * 7 + COOK_DAY[slot]).done.kuvanje;
+
+function boxesLeft(week, slot) {
+  if (!isCooked(week, slot)) return 0;
+  let eaten = 0;
+  for (const [offset, meal] of BOX_MEALS[slot]) {
+    if (peekDay(week * 7 + offset).done[meal]) eaten++;
+  }
+  return 4 - eaten;
+}
+
+// Dishes that still have boxes in the fridge on plan day i
+function fridgeOn(i) {
+  const list = [];
+  for (let week = Math.max(0, weekOf(i) - 1); week <= weekOf(i) && week < 4; week++) {
+    for (let slot = 0; slot < 3; slot++) {
+      if (week * 7 + COOK_DAY[slot] > i) continue;
+      const left = boxesLeft(week, slot);
+      if (left > 0) list.push({ dishId: state.dishes[week][slot], left });
+    }
+  }
+  return list;
+}
+
+// ---------- Pantry ----------
+
+// Flat list of [catalog id, amount] for a dish
+function recipeUses(dishId) {
+  const uses = [];
+  for (const line of RECIPES[dishId].ingredients) {
+    for (const use of line.use || []) uses.push(use);
+  }
+  return uses;
+}
+
+const cansFor = dishId => recipeUses(dishId).filter(([id]) => CATALOG[id].kind === 'count');
+
+// Change the pantry because of a check mark and remember what was changed.
+// `changes` is { id: +2 } or { id: -1 } for cans and { id: true } for staples.
+function applyLedger(key, changes) {
+  const applied = {};
+  for (const [id, change] of Object.entries(changes)) {
+    if (CATALOG[id].kind === 'count') {
+      const before = state.pantry[id] || 0;
+      const after = Math.max(0, before + change);
+      state.pantry[id] = after;
+      applied[id] = after - before;
+    } else if (!state.pantry[id]) {
+      state.pantry[id] = true;
+      applied[id] = 'set';
+    }
+  }
+  state.ledger[key] = applied;
+}
+
+// Undo what applyLedger did for this key
+function revertLedger(key) {
+  const applied = state.ledger[key];
+  if (!applied) return;
+  for (const [id, change] of Object.entries(applied)) {
+    if (change === 'set') state.pantry[id] = false;
+    else state.pantry[id] = Math.max(0, (state.pantry[id] || 0) - change);
+  }
+  delete state.ledger[key];
+}
+
+// Check or uncheck a task on a day. Cooking and hummus also use up cans.
+function toggleTask(i, key) {
+  const day = getDay(i);
+  const now = !day.done[key];
+  day.done[key] = now;
+
+  if (key === 'kuvanje') {
+    const ledgerKey = 'cook:' + i;
+    if (now) {
+      const changes = {};
+      for (const [id, qty] of cansFor(mealFor(i, 'vecera').dishId)) changes[id] = -qty;
+      applyLedger(ledgerKey, changes);
+    } else {
+      revertLedger(ledgerKey);
+    }
+  }
+  if (key === 'humus') {
+    const ledgerKey = 'humus:' + i;
+    if (now) applyLedger(ledgerKey, { leblebije: -1 }); else revertLedger(ledgerKey);
+  }
+  return now;
+}
+
+// ---------- Shopping list ----------
+
+function shopOf(week) {
+  if (!state.shop[week]) state.shop[week] = { checked: {}, extra: [] };
+  return state.shop[week];
+}
+
+const currentWeek = () => Math.min(3, Math.max(0, weekOf(todayIndex())));
+
+// Everything needed in a week: id -> amount (0 when the item has no amount)
+function weekNeeds(week) {
+  const needs = new Map();
+  const add = (id, qty) => needs.set(id, (needs.get(id) || 0) + (qty || 0));
+
+  state.dishes[week].forEach((dishId, slot) => {
+    for (const [id, qty] of recipeUses(dishId)) {
+      // cans for a dish that is already cooked are no longer needed
+      if (CATALOG[id].kind === 'count' && isCooked(week, slot)) continue;
+      add(id, qty);
+    }
+  });
+  for (const [id, qty] of WEEKLY_BASICS) {
+    if (id === 'leblebije' && peekDay(week * 7).done.humus) continue;
+    add(id, qty);
+  }
+  // keep showing things that were already checked off
+  for (const id of Object.keys(shopOf(week).checked)) {
+    if (!needs.has(id)) needs.set(id, 0);
+  }
+  return needs;
+}
+
+// Cans that earlier weeks still need, so they are not counted twice
+function reservedBefore(week) {
+  const reserved = {};
+  for (let w = currentWeek(); w < week; w++) {
+    state.dishes[w].forEach((dishId, slot) => {
+      if (isCooked(w, slot)) return;
+      for (const [id, qty] of cansFor(dishId)) reserved[id] = (reserved[id] || 0) + qty;
+    });
+    if (!peekDay(w * 7).done.humus) reserved.leblebije = (reserved.leblebije || 0) + 1;
+  }
+  return reserved;
+}
+
+function fmtQty(id, qty) {
+  const item = CATALOG[id];
+  if (item.unit === 'opt') return 'po želji';
+  if (!item.unit || !qty) return '';
+  if (item.head) {
+    const n = Math.max(1, Math.ceil(qty / item.head - 0.2));
+    return n + ' ' + plural(n, 'glavica', 'glavice', 'glavica');
+  }
+  if (item.unit === 'g') {
+    if (qty < 1000) return qty + ' g';
+    return (qty / 1000).toFixed(1).replace('.', ',').replace(',0', '') + ' kg';
+  }
+  if (item.unit === 'konz') return qty + ' ' + plural(qty, 'konzerva', 'konzerve', 'konzervi');
+  if (item.unit === 'pak') return qty + ' ' + plural(qty, 'pakovanje', 'pakovanja', 'pakovanja');
+  return qty + ' kom';
+}
+
+// The list for one week. `buy` is false for things the pantry already covers.
+function shoppingList(week) {
+  const reserved = reservedBefore(week);
+  const checked = shopOf(week).checked;
+  const items = [];
+
+  for (const [id, qty] of weekNeeds(week)) {
+    const c = CATALOG[id];
+    const item = { id, name: c.name, sv: c.sv, cat: c.cat, kind: c.kind, checked: id in checked, note: '' };
+
+    if (c.kind === 'fresh') {
+      item.buy = true;
+      item.amount = fmtQty(id, qty);
+    } else if (c.kind === 'count') {
+      const have = Math.max(0, (state.pantry[id] || 0) - (reserved[id] || 0));
+      item.missing = Math.max(0, qty - have);
+      item.buy = item.checked || item.missing > 0;
+      item.amount = fmtQty(id, item.checked ? checked[id] : item.missing);
+      if (!item.checked && have > 0 && item.missing > 0) item.note = 'u ostavi ' + have;
+    } else {
+      item.buy = item.checked || !state.pantry[id];
+      item.amount = '';
+    }
+    items.push(item);
+  }
+  return items;
+}
+
+// Check or uncheck an item. Cans and staples also update the pantry.
+function toggleShopItem(week, id) {
+  const shop = shopOf(week);
+  const ledgerKey = 'shop:' + week + ':' + id;
+  const kind = CATALOG[id].kind;
+
+  if (id in shop.checked) {
+    revertLedger(ledgerKey);
+    delete shop.checked[id];
+    return;
+  }
+  if (kind === 'count') {
+    const item = shoppingList(week).find(x => x.id === id);
+    const n = item ? item.missing : 0;
+    applyLedger(ledgerKey, { [id]: n });
+    shop.checked[id] = n;
+  } else if (kind === 'staple') {
+    applyLedger(ledgerKey, { [id]: true });
+    shop.checked[id] = true;
+  } else {
+    shop.checked[id] = true;
+  }
+}
+
+// The week whose shopping is coming up next
+function upcomingShopWeek() {
+  const t = todayIndex();
+  if (t < 0) return 0;
+  const week = Math.min(3, weekOf(t));
+  return t % 7 >= 4 ? Math.min(3, week + 1) : week;
+}
+
+/* ==========================================================================
+   4. EXERCISE DEMOS
+   Each demo is a stick figure drawn in SVG. A demo is a short list of key
+   poses; the figure moves smoothly from one to the next and loops.
+   A pose only says where the shoulders, hips, hands and feet are. Knees and
+   elbows are worked out from the limb lengths, so limbs never stretch.
+   ========================================================================== */
+
+const BONE = { thigh: 28, shin: 28, upper: 19, fore: 19, neck: 13, head: 8 };
+const FLOOR_Y = 127;
+
+// Two-bone limb: given the root (hip or shoulder) and the target (foot or hand),
+// return the middle joint and the end point. `bend` (+1 or -1) picks the side
+// the joint bends to.
+function solveLimb(root, target, len1, len2, bend) {
+  const dx = target[0] - root[0], dy = target[1] - root[1];
+  const reach = Math.min(Math.max(Math.hypot(dx, dy), Math.abs(len1 - len2) + 0.01), len1 + len2 - 0.01);
+  const inner = Math.acos((len1 * len1 + reach * reach - len2 * len2) / (2 * len1 * reach));
+  const angle = Math.atan2(dy, dx) + bend * inner;
+  const joint = [root[0] + len1 * Math.cos(angle), root[1] + len1 * Math.sin(angle)];
+  const ex = target[0] - joint[0], ey = target[1] - joint[1], el = Math.hypot(ex, ey) || 1;
+  return [joint, [joint[0] + len2 * ex / el, joint[1] + len2 * ey / el]];
+}
+
+// Shorthand for poses. s = shoulders, h = hips, a = ankles, w = wrists.
+// Use sn/sf, hn/hf, an/af, wn/wf when the near and far side differ.
+function pose(p) {
+  return {
+    sn: p.sn || p.s, sf: p.sf || p.s,
+    hn: p.hn || p.h, hf: p.hf || p.h,
+    an: p.an || p.a, af: p.af || p.a,
+    wn: p.wn || p.w, wf: p.wf || p.w,
+    head: p.head || null
+  };
+}
+
+// Front view pose for the side steps: body centre x and the two feet
+function frontPose(cx, footL, footR) {
+  return pose({
+    sn: [cx - 13, 37], sf: [cx + 13, 37],
+    hn: [cx - 9, 73], hf: [cx + 9, 73],
+    an: [footL, 123], af: [footR, 123],
+    wn: [cx - 11, 61], wf: [cx + 11, 61]
+  });
+}
+
+const DEMOS = {
+  // Glute bridge: lying on the back, hips go up and down
+  most: {
+    seconds: 1.6, knee: [-1, -1], elbow: [-1, -1], foot: [[9, 2], [9, 2]],
+    view: [24, 62, 160, 74],
+    props: [['mat', 36, 170]],
+    frames: [
+      pose({ s: [64, 120], h: [102, 120], a: [138, 122], w: [100, 122], head: [50, 118] }),
+      pose({ s: [64, 120], h: [99, 98], a: [138, 122], w: [100, 122], head: [50, 118] })
+    ]
+  },
+
+  // Band deadlift: standing on the band, hinge at the hips with a flat back
+  dizanje: {
+    seconds: 1.8, knee: [-1, -1], elbow: [1, 1], foot: [[10, 2], [10, 2]],
+    view: [14, 6, 219, 128],
+    band: j => [[118, FLOOR_Y - 2], j.wn],
+    frames: [
+      pose({ s: [116, 31], h: [115, 68], an: [112, 123], af: [119, 123], wn: [119, 68], wf: [122, 68] }),
+      pose({ s: [129, 49], h: [99, 74], an: [112, 123], af: [119, 123], wn: [129, 87], wf: [132, 87] })
+    ]
+  },
+
+  // Chair squat: sit back slowly until the chair is touched
+  cucanj: {
+    seconds: 2, knee: [-1, -1], elbow: [1, 1], foot: [[10, 2], [10, 2]],
+    view: [0, 6, 219, 128],
+    props: [['chair', 60, 92, 95]],
+    frames: [
+      pose({ s: [107, 31], h: [106, 68], an: [106, 123], af: [112, 123], wn: [116, 66], wf: [119, 66] }),
+      pose({ s: [96, 54], h: [82, 87], an: [106, 123], af: [112, 123], wn: [132, 57], wf: [134, 59] })
+    ]
+  },
+
+  // Seated band row: pull the elbows back, squeeze the shoulder blades
+  veslanje: {
+    seconds: 1.5, knee: [-1, -1], elbow: [1, 1], foot: [[1, -9], [1, -9]],
+    view: [38, 42, 152, 94],
+    props: [['mat', 60, 170]],
+    band: j => [[j.an[0] + 2, j.an[1] - 8], j.wn],
+    frames: [
+      pose({ s: [86, 78], h: [84, 116], a: [138, 120], wn: [122, 90], wf: [124, 92] }),
+      pose({ s: [84, 78], h: [84, 116], a: [138, 120], wn: [96, 97], wf: [98, 99] })
+    ]
+  },
+
+  // Incline push-up with the hands on a table edge
+  sklek: {
+    seconds: 1.6, knee: [-1, -1], elbow: [1, 1], foot: [[4, 8], [4, 8]],
+    view: [22, 12, 213, 124],
+    props: [['table', 150, 78]],
+    frames: [
+      pose({ s: [125, 51], h: [98.7, 78.5], a: [60, 119], w: [152, 76] }),
+      pose({ s: [138, 66.5], h: [106.5, 87.7], a: [60, 119], w: [152, 76] })
+    ]
+  },
+
+  // Side steps with a band above the knees (front view)
+  hod: {
+    seconds: 0.7, front: true, knee: [1, -1], elbow: [1, -1], foot: [[-7, 2], [7, 2]],
+    view: [3, 6, 219, 128],
+    band: j => [mix(j.hn, j.kn, 0.8), mix(j.hf, j.kf, 0.8)],
+    frames: [
+      frontPose(92, 82, 102), frontPose(102, 82, 122), frontPose(112, 102, 122), frontPose(122, 102, 142),
+      frontPose(132, 122, 142), frontPose(122, 102, 142), frontPose(112, 102, 122), frontPose(102, 82, 122)
+    ]
+  },
+
+  // Dead bug: opposite arm and leg go down, the lower back stays on the floor
+  bug: {
+    seconds: 1.5, knee: [-1, -1], elbow: [-1, -1], foot: [[0, -8], [0, -8]],
+    view: [16, 62, 164, 74],
+    props: [['mat', 30, 180]],
+    frames: [
+      pose({ s: [70, 120], h: [108, 120], a: [136, 92], wn: [70, 82], wf: [73, 82], head: [56, 118] }),
+      pose({ s: [70, 120], h: [108, 120], an: [136, 92], af: [161, 112], wn: [34, 113], wf: [73, 82], head: [56, 118] }),
+      pose({ s: [70, 120], h: [108, 120], a: [136, 92], wn: [70, 82], wf: [73, 82], head: [56, 118] }),
+      pose({ s: [70, 120], h: [108, 120], an: [161, 112], af: [136, 92], wn: [70, 82], wf: [37, 113], head: [56, 118] })
+    ]
+  },
+
+  // Forearm plank: a straight line from head to heels, almost no movement
+  plank: {
+    seconds: 2.2, knee: [-1, -1], elbow: [1, 1], foot: [[3, 8], [3, 8]],
+    view: [36, 68, 160, 68],
+    props: [['mat', 40, 190]],
+    frames: [
+      pose({ s: [150, 103], h: [112.6, 109.5], a: [57.4, 119], w: [169, 122] }),
+      pose({ s: [150, 102.5], h: [112.6, 108], a: [57.4, 119], w: [169, 122] })
+    ]
+  }
+};
+
+const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+const smooth = t => t * t * (3 - 2 * t);
+
+// All joints of a demo at a given time (in seconds)
+function demoJoints(demo, time) {
+  const n = demo.frames.length;
+  const pos = (time / demo.seconds) % n;
+  const from = demo.frames[Math.floor(pos)];
+  const to = demo.frames[(Math.floor(pos) + 1) % n];
+  const t = smooth(pos - Math.floor(pos));
+
+  const j = {};
+  for (const key of ['sn', 'sf', 'hn', 'hf', 'an', 'af', 'wn', 'wf']) j[key] = mix(from[key], to[key], t);
+
+  [j.kn, j.an] = solveLimb(j.hn, j.an, BONE.thigh, BONE.shin, demo.knee[0]);
+  [j.kf, j.af] = solveLimb(j.hf, j.af, BONE.thigh, BONE.shin, demo.knee[1]);
+  [j.en, j.wn] = solveLimb(j.sn, j.wn, BONE.upper, BONE.fore, demo.elbow[0]);
+  [j.ef, j.wf] = solveLimb(j.sf, j.wf, BONE.upper, BONE.fore, demo.elbow[1]);
+
+  j.tn = [j.an[0] + demo.foot[0][0], j.an[1] + demo.foot[0][1]];      // toes
+  j.tf = [j.af[0] + demo.foot[1][0], j.af[1] + demo.foot[1][1]];
+
+  j.sm = mix(j.sn, j.sf, 0.5);                                        // middle of shoulders and hips
+  j.hm = mix(j.hn, j.hf, 0.5);
+  if (from.head && to.head) {
+    j.head = mix(from.head, to.head, t);
+  } else {
+    const dx = j.sm[0] - j.hm[0], dy = j.sm[1] - j.hm[1], len = Math.hypot(dx, dy) || 1;
+    j.head = [j.sm[0] + BONE.neck * dx / len, j.sm[1] + BONE.neck * dy / len];
+  }
+  return j;
+}
+
+const pts = list => list.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+
+// Static parts of a demo: floor, mat, chair or table
+function demoProps(demo) {
+  let out = `<line class="fig-floor" x1="8" y1="${FLOOR_Y}" x2="232" y2="${FLOOR_Y}"/>`;
+  for (const [type, a, b, c] of demo.props || []) {
+    if (type === 'mat') out += `<line class="fig-mat" x1="${a}" y1="${FLOOR_Y - 1.5}" x2="${b}" y2="${FLOOR_Y - 1.5}"/>`;
+    if (type === 'chair') {
+      out += `<path class="fig-prop" d="M${a} ${b - 38}V${FLOOR_Y}M${a} ${b}H${c}V${FLOOR_Y}"/>`;
+    }
+    if (type === 'table') out += `<path class="fig-prop" d="M${a - 3} ${b}H226M${a + 6} ${b}V${FLOOR_Y}M218 ${b}V${FLOOR_Y}"/>`;
+  }
+  return out;
+}
+
+// Build the SVG once; drawDemo then only moves the points
+function mountDemo(svg) {
+  const demo = DEMOS[svg.dataset.demo];
+  const far = demo.front ? 'fig-limb' : 'fig-limb fig-far';
+  const view = demo.view || [0, 0, 240, 140];
+  svg.setAttribute('viewBox', view.join(' '));
+  svg.style.aspectRatio = view[2] + ' / ' + view[3];
+  svg.innerHTML = demoProps(demo) +
+    `<polyline class="${far}" data-p="legF"/><polyline class="${far}" data-p="armF"/>` +
+    `<line class="fig-torso" data-p="torso"/><line class="fig-limb" data-p="shoulders"/><line class="fig-limb" data-p="hips"/>` +
+    `<circle class="fig-head" r="${BONE.head}" data-p="head"/>` +
+    `<polyline class="fig-limb" data-p="legN"/><polyline class="fig-limb" data-p="armN"/>` +
+    (demo.band ? `<line class="fig-band" data-p="band"/>` : '');
+  svg.parts = {};
+  svg.querySelectorAll('[data-p]').forEach(el => { svg.parts[el.dataset.p] = el; });
+  drawDemo(svg, 0);
+}
+
+function setLine(el, a, b) {
+  el.setAttribute('x1', a[0].toFixed(1)); el.setAttribute('y1', a[1].toFixed(1));
+  el.setAttribute('x2', b[0].toFixed(1)); el.setAttribute('y2', b[1].toFixed(1));
+}
+
+function drawDemo(svg, time) {
+  const demo = DEMOS[svg.dataset.demo];
+  const j = demoJoints(demo, time);
+  const p = svg.parts;
+  p.legN.setAttribute('points', pts([j.hn, j.kn, j.an, j.tn]));
+  p.legF.setAttribute('points', pts([j.hf, j.kf, j.af, j.tf]));
+  p.armN.setAttribute('points', pts([j.sn, j.en, j.wn]));
+  p.armF.setAttribute('points', pts([j.sf, j.ef, j.wf]));
+  setLine(p.torso, j.sm, j.hm);
+  setLine(p.shoulders, j.sn, j.sf);
+  setLine(p.hips, j.hn, j.hf);
+  p.head.setAttribute('cx', j.head[0].toFixed(1));
+  p.head.setAttribute('cy', j.head[1].toFixed(1));
+  if (demo.band) setLine(p.band, ...demo.band(j));
+}
+
+// One animation loop for all demos on screen. It stops when none are left.
+let demoLoop = null;
+let demoClock = 0;
+let demoLast = 0;
+
+function startDemos() {
+  const svgs = document.querySelectorAll('svg.demo');
+  svgs.forEach(svg => { if (!svg.parts) mountDemo(svg); });
+  if (!svgs.length || demoLoop) return;
+
+  demoLast = performance.now();
+  const step = now => {
+    const live = document.querySelectorAll('svg.demo');
+    if (!live.length) { demoLoop = null; return; }
+    if (!ui.demoPaused) demoClock += (now - demoLast) / 1000;
+    demoLast = now;
+    live.forEach(svg => { if (svg.parts) drawDemo(svg, demoClock); });
+    demoLoop = requestAnimationFrame(step);
+  };
+  demoLoop = requestAnimationFrame(step);
+}
+
+/* ==========================================================================
+   5. VIEWS
+   Every view is a function that returns HTML for the current state.
+   Buttons carry a data-action attribute; the handlers are in section 6.
+   ========================================================================== */
+
+const esc = text => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const svgIcon = body => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
+const ICON = {
+  check: svgIcon('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+  left: svgIcon('<path d="M15 5l-7 7 7 7"/>'),
+  right: svgIcon('<path d="M9 5l7 7-7 7"/>'),
+  plus: svgIcon('<path d="M12 5v14M5 12h14"/>'),
+  minus: svgIcon('<path d="M5 12h14"/>'),
+  close: svgIcon('<path d="M6 6l12 12M18 6L6 18"/>')
+};
+
+function checkBtn(action, done, label, data) {
+  return `<button class="check${done ? ' is-done' : ''}" role="checkbox" aria-checked="${done}" aria-label="${esc(label)}" data-action="${action}" ${data || ''}>${ICON.check}</button>`;
+}
+
+// A row of lunch boxes: the eaten ones are empty, the rest carry the dish colour
+function boxRow(total, full, small) {
+  let out = '';
+  for (let n = 0; n < total; n++) {
+    const isFull = n >= total - full;
+    out += `<svg class="box${isFull ? ' is-full' : ''}${small ? ' is-small' : ''}" viewBox="0 0 26 21"><rect class="box-body" x="3" y="7" width="20" height="12" rx="3"/><rect class="box-lid" x="1" y="2.5" width="24" height="5.5" rx="2"/></svg>`;
+  }
+  return `<span class="boxes" aria-hidden="true">${out}</span>`;
+}
+
+// Swedish shop name, left out when it is the same word as the Serbian one
+const svName = c => c.sv && c.sv.toLowerCase() !== c.name.toLowerCase() ? ` <span class="sv small">${c.sv}</span>` : '';
+
+const numbersLine = x => x.kcal === null ? '' : `oko ${x.kcal} kcal, ${x.protein} g proteina`;
+
+// ---------- First start ----------
+
+function viewStart() {
+  const today = new Date();
+  const options = [['Danas', today], ['Sutra', addDays(today, 1)]];
+  const toSunday = (7 - today.getDay()) % 7;
+  if (toSunday > 1) options.push(['U nedelju', addDays(today, toSunday)]);
+
+  const buttons = options.map(([label, date]) =>
+    `<button class="list-row" data-action="start" data-date="${toISO(date)}">
+       <span class="lr-main"><span class="lr-title">${label}</span><span class="lr-sub">${longDate(date)}</span></span>
+     </button>`).join('');
+
+  return `
+    <h1>Plan ishrane i treninga</h1>
+    <p class="lead">Četiri nedelje, oko 1500 kcal dnevno, tri kuvanja i tri treninga nedeljno.</p>
+    <section class="fridge">
+      <h2>Jedno kuvanje, četiri kutije</h2>
+      <ul>
+        <li class="hue-indijska">${boxRow(4, 4)}<span class="fr-name">1. dan</span><span class="muted small">večera i 3 ručka</span></li>
+        <li class="hue-meksicka">${boxRow(4, 4)}<span class="fr-name">3. dan</span><span class="muted small">2 večere i 2 ručka</span></li>
+        <li class="hue-shawarma">${boxRow(4, 4)}<span class="fr-name">5. dan</span><span class="muted small">2 večere i 2 ručka</span></li>
+      </ul>
+    </section>
+    <section class="section">
+      <h2>Kada počinješ?</h2>
+      <p class="lead">Prvog dana kuvaš prvo jelo, a trening je 2, 4. i 6. dana u sedmici. Ako želiš da kuvaš nedeljom, utorkom i četvrtkom, počni u nedelju.</p>
+      <div class="list">${buttons}</div>
+      <div class="row section">
+        <label class="field"><span>Ili izaberi datum</span>
+          <input class="input" type="date" id="start-date" value="${toISO(today)}"></label>
+        <button class="btn" data-action="start-from-input">Počni tog dana</button>
+      </div>
+    </section>`;
+}
+
+// ---------- Today ----------
+
+function viewDanas() {
+  const i = ui.day, t = todayIndex(), date = dateOfDay(i);
+  const canJump = i !== t && t >= 0 && t < PLAN_DAYS;
+
+  let html = `
+    <header class="dayhead">
+      <p class="dayhead-date">${longDate(date)}</p>
+      <h1>Dan ${i + 1} od ${PLAN_DAYS}</h1>
+      <p class="dayhead-week">Sedmica ${weekOf(i) + 1} od 4</p>
+      ${planRuler(i)}
+      ${weekStrip(i, t)}
+      ${canJump ? `<button class="link jump" data-action="goto-day" data-day="${t}">Vrati se na danas</button>` : ''}
+    </header>`;
+
+  if (t < 0) {
+    html += `
+      <div class="banner">
+        <p><strong>Plan počinje za ${-t} ${plural(-t, 'dan', 'dana', 'dana')}.</strong></p>
+        <p>Do tada obavi kupovinu za prvu sedmicu i označi šta već imaš u ostavi.</p>
+        <button class="btn btn-small" data-action="open-shop" data-week="0">Otvori listu za kupovinu</button>
+      </div>`;
+  }
+  if (t >= PLAN_DAYS) {
+    html += `
+      <div class="banner">
+        <p><strong>Četiri nedelje su gotove.</strong></p>
+        <p>Ne vraćaj se odmah na staro. Dodaj po 200 kcal nedeljno dok težina ne stane. U frižideru je još jedna kutija poslednjeg jela za sutrašnji ručak.</p>
+      </div>`;
+  }
+  return html + fridgeBlock(i) + timeline(i) + daySummary(i);
+}
+
+// All 28 days as small ticks, grouped by week
+function planRuler(i) {
+  let ticks = '';
+  for (let d = 0; d < PLAN_DAYS; d++) {
+    const p = dayProgress(d);
+    const state = p.done === p.total ? ' is-full' : p.done > 0 ? ' is-part' : '';
+    ticks += `<span class="tick${state}${d === i ? ' is-on' : ''}"></span>`;
+  }
+  return `<div class="ruler" aria-hidden="true">${ticks}</div>`;
+}
+
+function weekStrip(i, t) {
+  const first = weekOf(i) * 7;
+  let cells = '';
+  for (let d = first; d < first + 7; d++) {
+    const date = dateOfDay(d), p = dayProgress(d);
+    const cls = ['wk-day'];
+    if (d === i) cls.push('is-on');
+    if (d === t) cls.push('is-today');
+    if (p.done === p.total) cls.push('is-full'); else if (p.done > 0) cls.push('is-part');
+    cells += `
+      <button class="${cls.join(' ')}" data-action="goto-day" data-day="${d}" aria-label="${longDate(date)}"${d === i ? ' aria-current="date"' : ''}>
+        <span class="wk-name">${WEEKDAYS_SHORT[date.getDay()]}</span>
+        <span class="wk-num">${date.getDate()}</span>
+        <span class="wk-dot"></span>
+      </button>`;
+  }
+  return `
+    <div class="weekstrip">
+      <button class="wk-arrow" data-action="goto-day" data-day="${Math.max(0, i - 7)}" aria-label="Prethodna sedmica"${first === 0 ? ' disabled' : ''}>${ICON.left}</button>
+      ${cells}
+      <button class="wk-arrow" data-action="goto-day" data-day="${Math.min(PLAN_DAYS - 1, i + 7)}" aria-label="Sledeća sedmica"${first === 21 ? ' disabled' : ''}>${ICON.right}</button>
+    </div>`;
+}
+
+function fridgeBlock(i) {
+  const items = fridgeOn(i);
+  if (!items.length) return '';
+  const rows = items.map(it => `
+    <li class="hue-${it.dishId}">
+      ${boxRow(4, it.left)}
+      <span class="fr-name">${RECIPES[it.dishId].short}</span>
+      <span class="muted small">${it.left} ${plural(it.left, 'kutija', 'kutije', 'kutija')}</span>
+    </li>`).join('');
+  return `<section class="fridge"><h2>U frižideru</h2><ul>${rows}</ul></section>`;
+}
+
+function timeline(i) {
+  const day = peekDay(i);
+  const dinner = mealFor(i, 'vecera');
+  const rows = [];
+
+  rows.push(optionRow(i, 'dorucak', '08:45', 'Doručak', BREAKFASTS, 'Uz crni čaj sa malo mleka.'));
+  rows.push(mealRow(i, 'rucak', '12:00', 'Ručak'));
+  rows.push(quietRow(i, 'setnja1', 'Šetnja posle ručka, 10 do 15 minuta'));
+  rows.push(optionRow(i, 'uzina', '15:00', 'Užina', SNACKS));
+  rows.push(mealRow(i, 'vecera', '18:30', 'Večera'));
+  rows.push(quietRow(i, 'setnja2', 'Šetnja posle večere, 10 do 15 minuta'));
+
+  const setsDone = Object.values(day.sets).reduce((a, b) => a + b, 0);
+  if (isWorkoutDay(i) || setsDone > 0) {
+    const done = !!day.done.trening;
+    rows.push(`
+      <li class="tl${done ? ' is-done' : ''}">
+        <span class="tl-time"></span>
+        <div class="tl-main">
+          <div class="tl-head">
+            <div class="tl-heading"><p class="tl-kind">Trening</p><h3 class="tl-title">Trening snage, 25 do 30 minuta</h3></div>
+            ${checkBtn('toggle-task', done, 'Trening', `data-day="${i}" data-key="trening"`)}
+          </div>
+          <p class="tl-meta">Urađeno ${setsDone} od ${totalSets()} serija.</p>
+          <div class="tl-actions"><button class="link" data-action="tab" data-tab="vezbe">Otvori trening</button></div>
+        </div>
+      </li>`);
+  }
+
+  if (i % 7 === 0) {
+    rows.push(quietRow(i, 'jaja', 'Skuvaj jaja za celu sedmicu'));
+    rows.push(quietRow(i, 'humus', 'Napravi laki humus, po želji', `<button class="link" data-action="open-recipe" data-id="humus">Recept</button>`));
+  }
+
+  const tomorrow = i + 1 < PLAN_DAYS ? mealFor(i + 1, 'rucak') : null;
+  if (tomorrow && tomorrow.type === 'dish') {
+    const cookedLater = dinner.cook && dinner.dishId === tomorrow.dishId;
+    rows.push(`
+      <li class="tl is-quiet">
+        <span class="tl-time"></span>
+        <div class="tl-main"><p class="tl-title">Za sutra: ${cookedLater ? 'odvoj' : 'spakuj'} kutiju za ručak (${RECIPES[tomorrow.dishId].short}).</p></div>
+      </li>`);
+  }
+  return `<ol class="timeline">${rows.join('')}</ol>`;
+}
+
+// Breakfast, snack or quick meal: one chosen option, with a way to change it
+function optionRow(i, key, time, kind, options, extraText) {
+  const id = pickOf(i, key), opt = options[id];
+  const done = !!peekDay(i).done[key];
+  const open = ui.pickOpen === key;
+  const chips = !open ? '' : `
+    <div class="chips" role="group" aria-label="${kind}, izbor">
+      ${Object.entries(options).map(([oid, o]) =>
+        `<button class="chip${oid === id ? ' is-on' : ''}" aria-pressed="${oid === id}" data-action="pick" data-day="${i}" data-key="${key}" data-value="${oid}">${o.name}</button>`).join('')}
+    </div>`;
+  return `
+    <li class="tl${done ? ' is-done' : ''}">
+      <span class="tl-time">${time}</span>
+      <div class="tl-main">
+        <div class="tl-head">
+          <div class="tl-heading"><p class="tl-kind">${kind}</p><h3 class="tl-title">${opt.name}</h3></div>
+          ${checkBtn('toggle-task', done, kind, `data-day="${i}" data-key="${key}"`)}
+        </div>
+        ${chips}
+        <p class="tl-text">${opt.text}${extraText ? ' ' + extraText : ''}</p>
+        <p class="tl-meta">${numbersLine(opt)}</p>
+        <div class="tl-actions"><button class="link" data-action="toggle-pick" data-key="${key}">${open ? 'Zatvori izbor' : 'Promeni'}</button></div>
+      </div>
+    </li>`;
+}
+
+// Lunch or dinner: a boxed dish, a cooking evening or a quick meal
+function mealRow(i, which, time, kind) {
+  const meal = mealFor(i, which);
+  if (meal.type === 'quick') {
+    const group = Object.fromEntries(Object.entries(QUICK).filter(([, q]) => q.group === meal.group));
+    return optionRow(i, which, time, kind, group);
+  }
+
+  const r = RECIPES[meal.dishId];
+  const day = peekDay(i);
+  const done = !!day.done[which];
+  const left = 4 - meal.box + (done ? 0 : 1);
+  const cooked = !!day.done.kuvanje;
+
+  const cookPart = !meal.cook ? '' : `
+    <div class="subtask">
+      <span>Skuvano i podeljeno u 4 kutije</span>
+      ${checkBtn('toggle-task', cooked, 'Skuvano', `data-day="${i}" data-key="kuvanje"`)}
+    </div>`;
+
+  return `
+    <li class="tl${done ? ' is-done' : ''}${meal.cook ? ' is-cook' : ''}">
+      <span class="tl-time">${time}</span>
+      <div class="tl-main">
+        <div class="tl-head">
+          <div class="tl-heading"><p class="tl-kind">${kind}${meal.cook ? ', danas kuvaš' : ''}</p><h3 class="tl-title">${r.title}</h3></div>
+          ${checkBtn('toggle-task', done, kind, `data-day="${i}" data-key="${which}"`)}
+        </div>
+        <p class="tl-meta hue-${meal.dishId}">${boxRow(4, left, true)} Kutija ${meal.box} od 4</p>
+        <p class="tl-text">${meal.cook ? 'Kuvanje traje oko ' + r.minutes + ' minuta. Prva porcija je večeras, tri idu u frižider.' : r.work}</p>
+        <p class="tl-meta">${numbersLine(r)}</p>
+        <div class="tl-actions"><button class="link" data-action="open-recipe" data-id="${meal.dishId}">${meal.cook ? 'Otvori recept' : 'Recept'}</button></div>
+        ${cookPart}
+      </div>
+    </li>`;
+}
+
+function quietRow(i, key, text, extra) {
+  const done = !!peekDay(i).done[key];
+  return `
+    <li class="tl is-quiet${done ? ' is-done' : ''}">
+      <span class="tl-time"></span>
+      <div class="tl-main">
+        <div class="tl-head">
+          <p class="tl-title tl-heading">${text}</p>
+          ${checkBtn('toggle-task', done, text, `data-day="${i}" data-key="${key}"`)}
+        </div>
+        ${extra ? `<div class="tl-actions">${extra}</div>` : ''}
+      </div>
+    </li>`;
+}
+
+function daySummary(i) {
+  const day = peekDay(i), total = dayTotals(i), p = dayProgress(i);
+  return `
+    <section class="daysum">
+      <div class="daysum-main">
+        <span class="num">${total.kcal}<span class="unit">kcal</span></span>
+        <span class="num">${total.protein}<span class="unit">g proteina</span></span>
+      </div>
+      <p class="muted small">Zbir izabranih obroka${total.open ? ', bez slobodnijeg obroka' : ''}. Obavljeno ${p.done} od ${p.total}.</p>
+      <div class="row">
+        <label class="field"><span>Koraci danas, cilj je 8 do 10 hiljada</span>
+          <input class="input steps-input" type="number" inputmode="numeric" min="0" step="100" value="${day.steps || ''}" placeholder="0" data-change="steps" data-day="${i}"></label>
+      </div>
+      <div class="extra">
+        <span>Umor ili jaka glad? Dodaj 150 do 200 kcal: voćku i čašu kvarga, ili veću porciju pirinča.</span>
+        <button class="have${day.extra ? ' is-on' : ''}" aria-pressed="${!!day.extra}" data-action="toggle-extra" data-day="${i}">${day.extra ? 'Dodato' : 'Dodaj'}</button>
+      </div>
+    </section>`;
+}
+
+// ---------- Recipes ----------
+
+function viewRecepti() {
+  if (ui.recipe === 'humus') return viewHummus();
+  if (ui.recipe) return viewRecipe(ui.recipe);
+
+  const dishes = DISH_IDS.map(id => {
+    const r = RECIPES[id];
+    return `
+      <button class="list-row hue-${id}" data-action="open-recipe" data-id="${id}">
+        ${boxRow(1, 1)}
+        <span class="lr-main"><span class="lr-title">${r.title}</span><span class="lr-sub">${r.set === 'Zamena' ? 'Zamena za bilo koje jelo' : 'Sedmica ' + r.set}, ${r.minutes} minuta</span></span>
+        <span class="lr-end"><span class="num">${r.kcal}</span> kcal<br>${r.protein} g prot.</span>
+      </button>`;
+  }).join('');
+
+  const optionList = options => Object.values(options).map(o => `
+    <li>
+      <p><strong>${o.name}</strong></p>
+      <p class="tl-text">${o.text}</p>
+      <p class="tl-meta">${numbersLine(o)}</p>
+    </li>`).join('');
+
+  return `
+    <h1 class="page-title">Recepti</h1>
+    <section class="section">
+      <h2>Glavna jela</h2>
+      <p class="lead">Svaki recept je za 4 porcije. Brojke su po porciji, sa prilogom i salatom.</p>
+      <div class="list">${dishes}</div>
+    </section>
+    <section class="section">
+      <h2>Brze večere</h2>
+      <p class="lead">Količine su za jednu porciju.</p>
+      <ul class="card">${optionList(QUICK)}</ul>
+    </section>
+    <section class="section">
+      <h2>Doručak</h2>
+      <p class="lead">Uz crni čaj sa malo mleka, još oko 20 kcal.</p>
+      <ul class="card">${optionList(BREAKFASTS)}</ul>
+    </section>
+    <section class="section">
+      <h2>Užina</h2>
+      <ul class="card">${optionList(SNACKS)}</ul>
+      <div class="list">
+        <button class="list-row" data-action="open-recipe" data-id="humus">
+          <span class="lr-main"><span class="lr-title">${HUMMUS.title}</span><span class="lr-sub">Recept za užine sa humusom</span></span>
+          <span class="lr-end"><span class="num">${HUMMUS.kcal}</span> kcal na 100 g</span>
+        </button>
+      </div>
+    </section>`;
+}
+
+// Pantry tag for one ingredient line: only for things the pantry tracks
+function pantryTag(line) {
+  const tracked = (line.use || []).filter(([id]) => CATALOG[id].kind !== 'fresh');
+  const missing = tracked.filter(([id, qty]) =>
+    CATALOG[id].kind === 'count' ? (state.pantry[id] || 0) < (qty || 1) : !state.pantry[id]);
+  if (!missing.length) return '';
+  return `<span class="tag is-missing">nema u ostavi: ${missing.map(([id]) => CATALOG[id].name.toLowerCase()).join(', ')}</span>`;
+}
+
+function viewRecipe(id) {
+  const r = RECIPES[id];
+  const variants = !r.variants ? '' : `
+    <section class="section">
+      <h2>Po porciji, zavisno od mesa</h2>
+      <div class="card"><table class="table">
+        <tr><th>Meso (600 g)</th><th class="r">kcal</th><th class="r">Proteini</th></tr>
+        ${r.variants.map(([name, kcal, protein]) => `<tr><td>${name}</td><td class="r num">${kcal}</td><td class="r">${protein} g</td></tr>`).join('')}
+      </table></div>
+    </section>`;
+
+  return `
+    <button class="back" data-action="close-recipe">${ICON.left} Nazad</button>
+    <h1 class="hue-${id}">${r.title}</h1>
+    <p class="lead">${r.side}</p>
+    <div class="facts">
+      <div class="fact"><span class="num">${r.kcal}</span><span>kcal po porciji</span></div>
+      <div class="fact"><span class="num">${r.protein} g</span><span>proteina</span></div>
+      <div class="fact"><span class="num">${r.minutes}</span><span>minuta</span></div>
+      <div class="fact"><span class="num">4</span><span>porcije</span></div>
+    </div>
+    <section class="section">
+      <h2>Sastojci</h2>
+      <ul class="card">
+        ${r.ingredients.map(line => `<li class="ingr"><span class="ingr-text">${line.t}</span>${pantryTag(line)}</li>`).join('')}
+      </ul>
+    </section>
+    <section class="section">
+      <h2>Priprema</h2>
+      <ol class="card">
+        ${r.steps.map((text, n) => `<li class="step"><span class="num">${n + 1}</span><span>${text}</span></li>`).join('')}
+      </ol>
+    </section>
+    ${variants}
+    <p class="note"><strong>Za posao.</strong> ${r.work}</p>
+    ${r.note ? `<p class="note">${r.note}</p>` : ''}`;
+}
+
+function viewHummus() {
+  const h = HUMMUS;
+  return `
+    <button class="back" data-action="close-recipe">${ICON.left} Nazad</button>
+    <h1>${h.title}</h1>
+    <p class="lead">${h.lead}</p>
+    <section class="section">
+      <h2>Sastojci</h2>
+      <ul class="card">${h.ingredients.map(t => `<li>${t}</li>`).join('')}</ul>
+    </section>
+    <section class="section">
+      <h2>Priprema</h2>
+      <ol class="card">${h.steps.map((text, n) => `<li class="step"><span class="num">${n + 1}</span><span>${text}</span></li>`).join('')}</ol>
+    </section>
+    <p class="note">${h.note}</p>`;
+}
+
+// ---------- Shopping and pantry ----------
+
+function viewKupovina() {
+  const seg = `
+    <div class="seg" role="tablist">
+      <button class="seg-btn${ui.shopView === 'lista' ? ' is-on' : ''}" role="tab" aria-selected="${ui.shopView === 'lista'}" data-action="shop-view" data-view="lista">Lista</button>
+      <button class="seg-btn${ui.shopView === 'ostava' ? ' is-on' : ''}" role="tab" aria-selected="${ui.shopView === 'ostava'}" data-action="shop-view" data-view="ostava">Ostava</button>
+    </div>`;
+  return `<h1 class="page-title">Kupovina</h1><div class="section">${seg}</div>` +
+    (ui.shopView === 'ostava' ? pantryView() : shopListView());
+}
+
+function shopListView() {
+  const week = ui.shopWeek;
+  const items = shoppingList(week);
+  const shop = shopOf(week);
+  const toBuy = items.filter(x => x.buy);
+  const left = toBuy.filter(x => !x.checked).length + shop.extra.filter(x => !x.done).length;
+  const covered = items.filter(x => !x.buy).map(x => x.name);
+
+  const from = dateOfDay(week * 7), to = dateOfDay(week * 7 + 6);
+  const now = currentWeek(), started = todayIndex() >= 0;
+  const which = started && week === now ? 'Tekuća sedmica'
+    : started && week === now + 1 ? 'Sledeća sedmica'
+    : 'Sedmica ' + (week + 1);
+
+  const weekChips = [0, 1, 2, 3].map(w =>
+    `<button class="chip${w === week ? ' is-on' : ''}" aria-pressed="${w === week}" data-action="shop-week" data-week="${w}">Sedmica ${w + 1}</button>`).join('');
+
+  let groups = '';
+  for (const [cat, title] of CATEGORIES) {
+    const list = toBuy.filter(x => x.cat === cat).sort((a, b) => a.checked - b.checked);
+    if (!list.length) continue;
+    groups += `<h3 class="cat-title">${title}</h3><ul class="card">` + list.map(x => `
+      <li class="shop-item${x.checked ? ' is-done' : ''}">
+        ${checkBtn('toggle-shop', x.checked, x.name, `data-week="${week}" data-id="${x.id}"`)}
+        <span class="si-main"><span class="si-name">${x.name}</span>${svName(x)}${x.note ? `<br><span class="muted small">${x.note}</span>` : ''}</span>
+        <span class="si-amount">${x.amount}</span>
+      </li>`).join('') + `</ul>`;
+  }
+
+  const extra = shop.extra.map(x => `
+    <li class="shop-item${x.done ? ' is-done' : ''}">
+      ${checkBtn('toggle-extra-item', x.done, x.name, `data-week="${week}" data-id="${x.id}"`)}
+      <span class="si-main"><span class="si-name">${esc(x.name)}</span></span>
+      <button class="icon-btn" aria-label="Ukloni ${esc(x.name)}" data-action="remove-extra-item" data-week="${week}" data-id="${x.id}">${ICON.close}</button>
+    </li>`).join('');
+
+  return `
+    <div class="weekpick" role="group" aria-label="Sedmica">${weekChips}</div>
+    <p class="lead">${which}, od ${shortDate(from)} do ${shortDate(to)} Prvo kuvanje je u ${WEEKDAYS_ACC[from.getDay()]}. Jela: ${state.dishes[week].map(id => RECIPES[id].short).join(', ')}.</p>
+    <p class="lead"><strong>${left === 0 ? 'Sve je kupljeno.' : 'Ostalo je ' + left + ' ' + plural(left, 'stavka', 'stavke', 'stavki') + '.'}</strong></p>
+    ${groups}
+    <h3 class="cat-title">Moje stavke</h3>
+    ${extra ? `<ul class="card">${extra}</ul>` : ''}
+    <div class="row" style="margin-top:10px">
+      <label class="field"><span>Dodaj na listu</span><input class="input" id="extra-name" type="text" maxlength="60" data-enter="add-extra-item"></label>
+      <button class="btn" data-action="add-extra-item">Dodaj</button>
+    </div>
+    ${covered.length ? `<p class="note"><strong>Već imaš u ostavi.</strong> ${covered.join(', ')}.</p>` : ''}
+    <p class="note">Kada štikliraš konzervu ili namirnicu iz ostave, ona se upisuje u ostavu. Količine za doručak, užinu i brze večere su okvirne.</p>`;
+}
+
+function pantryView() {
+  let html = `<p class="lead">Označi šta imaš kod kuće. Lista za kupovinu preskače sve što je ovde, a konzerve se same skidaju kada označiš da je jelo skuvano.</p>`;
+
+  const order = ['konzerve', 'suvo', 'zacini', 'smrznuto'];
+  for (const cat of order) {
+    const title = CATEGORIES.find(c => c[0] === cat)[1];
+    const ids = Object.keys(CATALOG).filter(id => CATALOG[id].cat === cat && CATALOG[id].kind !== 'fresh');
+    if (!ids.length) continue;
+    html += `<h3 class="cat-title">${title}</h3><ul class="card">` + ids.map(id => {
+      const c = CATALOG[id];
+      const label = `<span class="si-main"><span class="si-name">${c.name}</span>${svName(c)}</span>`;
+      if (c.kind === 'count') {
+        const n = state.pantry[id] || 0;
+        return `<li class="pantry-row">${label}${stepper('pantry-step', n, c.name, `data-id="${id}"`)}</li>`;
+      }
+      const on = !!state.pantry[id];
+      return `<li class="pantry-row">${label}<button class="have${on ? ' is-on' : ''}" aria-pressed="${on}" data-action="pantry-toggle" data-id="${id}">${on ? 'Imam' : 'Nemam'}</button></li>`;
+    }).join('') + `</ul>`;
+  }
+
+  const custom = state.custom.map(x => `
+    <li class="pantry-row">
+      <span class="si-main"><span class="si-name">${esc(x.name)}</span></span>
+      ${stepper('custom-step', x.qty, x.name, `data-id="${x.id}"`)}
+      <button class="icon-btn" aria-label="Ukloni ${esc(x.name)}" data-action="remove-custom" data-id="${x.id}">${ICON.close}</button>
+    </li>`).join('');
+
+  return html + `
+    <h3 class="cat-title">Moje stavke</h3>
+    ${custom ? `<ul class="card">${custom}</ul>` : ''}
+    <div class="row" style="margin-top:10px">
+      <label class="field"><span>Dodaj u ostavu</span><input class="input" id="custom-name" type="text" maxlength="60" data-enter="add-custom"></label>
+      <button class="btn" data-action="add-custom">Dodaj</button>
+    </div>`;
+}
+
+function stepper(action, value, name, data) {
+  return `
+    <span class="stepper">
+      <button class="icon-btn" aria-label="Manje: ${esc(name)}" data-action="${action}" data-delta="-1" ${data}${value <= 0 ? ' disabled' : ''}>${ICON.minus}</button>
+      <span class="num" aria-live="polite">${value}</span>
+      <button class="icon-btn" aria-label="Više: ${esc(name)}" data-action="${action}" data-delta="1" ${data}>${ICON.plus}</button>
+    </span>`;
+}
+
+// ---------- Workout ----------
+
+const totalSets = () => EXERCISES.reduce((sum, ex) => sum + ex.sets, 0);
+
+function viewVezbe() {
+  const i = ui.day, day = peekDay(i);
+  const first = weekOf(i) * 7;
+  let weekCount = 0;
+  for (let d = first; d < first + 7; d++) if (peekDay(d).done.trening) weekCount++;
+
+  const list = EXERCISES.map(ex => {
+    const done = day.sets[ex.id] || 0;
+    const open = ui.exercise === ex.id;
+    const head = `
+      <button class="ex-head" aria-expanded="${open}" data-action="open-exercise" data-id="${ex.id}">
+        <span class="lr-main"><span class="lr-title">${ex.name}</span><span class="lr-sub">${ex.dose}</span></span>
+        <span class="ex-count${done >= ex.sets ? ' is-done' : ''}">${done} od ${ex.sets}</span>
+      </button>`;
+    return `<li class="ex">${head}${open ? exerciseBody(ex, done, i) : ''}</li>`;
+  }).join('');
+
+  const restChips = [60, 75, 90].map(s =>
+    `<button class="chip${state.settings.rest === s ? ' is-on' : ''}" aria-pressed="${state.settings.rest === s}" data-action="set-rest" data-seconds="${s}">${s} s</button>`).join('');
+
+  return `
+    <h1 class="page-title">Trening snage</h1>
+    <p class="lead">Isti trening tri puta nedeljno, 25 do 30 minuta. Štikliraj svaku seriju i pauza kreće sama.</p>
+    <p class="lead"><strong>${longDate(dateOfDay(i))}.</strong> Ove sedmice: ${weekCount} od 3 treninga.</p>
+    <ol class="list">${list}</ol>
+    <section class="section">
+      <h2>Pauza između serija</h2>
+      <div class="chips">${restChips}</div>
+    </section>
+    <section class="section">
+      <h2>Dobro je znati</h2>
+      <p class="note"><strong>Šta su vežbe snage.</strong> Vežbe u kojima mišići rade protiv otpora (težina tela, trake, tegovi), toliko da su poslednja 2 do 3 ponavljanja teška. Dok jedeš manje, one čuvaju mišiće, a mišići troše najveći deo glukoze posle obroka.</p>
+      <p class="note"><strong>Kolena.</strong> Za sada bez dubokih iskoraka i skokova. Ako neka vežba izaziva bol u zglobu, a ne umor u mišiću, preskoči je. Ako problemi potraju, vredi otići kod fizioterapeuta.</p>
+      <p class="note"><strong>Kada postane lako.</strong> Uzmi jaču traku, uspori spuštanje ili dodaj ponavljanja. Tegići od 2 do 3 kg nisu neophodni, za noge su prelagani.</p>
+      <p class="note"><strong>Koraci.</strong> Cilj je 8 do 10 hiljada dnevno. Najlakše je kroz dve kratke šetnje posle obroka i jednu stanicu peške na putu do posla.</p>
+    </section>`;
+}
+
+function exerciseBody(ex, done, i) {
+  const sets = [];
+  for (let n = 1; n <= ex.sets; n++) {
+    sets.push(`<button class="set${n <= done ? ' is-done' : ''}" role="checkbox" aria-checked="${n <= done}" aria-label="Serija ${n}" data-action="set-done" data-day="${i}" data-id="${ex.id}" data-set="${n}">${n}</button>`);
+  }
+  const holdChips = !ex.hold ? '' : `
+    <div class="sets">
+      <span class="sets-label">Zadrži</span>
+      ${[20, 30, 40].map(s => `<button class="chip${state.settings.hold === s ? ' is-on' : ''}" aria-pressed="${state.settings.hold === s}" data-action="set-hold" data-seconds="${s}">${s} s</button>`).join('')}
+      <button class="btn btn-small btn-primary" data-action="start-hold" data-day="${i}">Pokreni tajmer</button>
+    </div>`;
+  return `
+    <div class="ex-body">
+      <div class="demo-wrap">
+        <svg class="demo" data-demo="${ex.id}" role="img" aria-label="Animacija vežbe: ${ex.name}"></svg>
+      </div>
+      <ol class="cues">${ex.cues.map((text, n) => `<li><span class="num">${n + 1}</span><span>${text}</span></li>`).join('')}</ol>
+      <p class="note"><strong>Pazi.</strong> ${ex.watch}${ex.harder ? ' ' + ex.harder : ''}</p>
+      <div class="sets"><span class="sets-label">Serije</span>${sets.join('')}</div>
+      ${holdChips}
+      <div class="tl-actions">
+        <button class="link" data-action="toggle-demo">${ui.demoPaused ? 'Pusti animaciju' : 'Zaustavi animaciju'}</button>
+        <a class="link" target="_blank" rel="noopener" href="https://www.youtube.com/results?search_query=${encodeURIComponent(ex.video)}">Video na YouTube-u</a>
+      </div>
+    </div>`;
+}
+
+// ---------- More: plan, progress, rules, settings ----------
+
+function viewVise() {
+  if (ui.more === 'plan') return ui.swap ? viewSwap() : viewPlan();
+  if (ui.more === 'napredak') return viewNapredak();
+  if (ui.more === 'pravila') return viewPravila();
+  if (ui.more === 'podesavanja') return viewPodesavanja();
+
+  const row = (id, title, sub) => `
+    <button class="list-row" data-action="more" data-page="${id}">
+      <span class="lr-main"><span class="lr-title">${title}</span><span class="lr-sub">${sub}</span></span>
+      <svg class="icon chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+    </button>`;
+  return `
+    <h1 class="page-title">Više</h1>
+    <div class="list">
+      ${row('plan', 'Ceo plan', 'Sve četiri sedmice i zamena jela')}
+      ${row('napredak', 'Napredak', 'Težina i koraci')}
+      ${row('pravila', 'Pravila plana', 'Okvir, merenje, čuvanje hrane, prilagođavanje')}
+      ${row('podesavanja', 'Podešavanja', 'Datum početka, rezervna kopija, brisanje')}
+    </div>`;
+}
+
+const backToMore = `<button class="back" data-action="more" data-page="">${ICON.left} Više</button>`;
+
+function viewPlan() {
+  const t = todayIndex();
+  const weeks = [0, 1, 2, 3].map(week => {
+    const from = dateOfDay(week * 7), to = dateOfDay(week * 7 + 6);
+    const slots = state.dishes[week].map((id, slot) => {
+      const cooked = isCooked(week, slot);
+      const cookDate = dateOfDay(week * 7 + COOK_DAY[slot]);
+      return `
+        <div class="slot hue-${id}">
+          ${boxRow(1, 1)}
+          <span class="lr-main"><span class="lr-title">${RECIPES[id].short}</span><span class="lr-sub">Kuva se u ${WEEKDAYS_ACC[cookDate.getDay()]}, ${shortDate(cookDate)}</span></span>
+          ${cooked ? '<span class="tag is-ok">skuvano</span>' : `<button class="btn btn-small btn-quiet" data-action="swap" data-week="${week}" data-slot="${slot}">Zameni</button>`}
+        </div>`;
+    }).join('');
+
+    let cells = '';
+    for (let d = week * 7; d < week * 7 + 7; d++) {
+      const date = dateOfDay(d), p = dayProgress(d);
+      const cls = ['wk-day'];
+      if (d === t) cls.push('is-on');
+      if (p.done === p.total) cls.push('is-full'); else if (p.done > 0) cls.push('is-part');
+      cells += `<button class="${cls.join(' ')}" data-action="goto-day" data-day="${d}" aria-label="${longDate(date)}"><span class="wk-name">${WEEKDAYS_SHORT[date.getDay()]}</span><span class="wk-num">${date.getDate()}</span><span class="wk-dot"></span></button>`;
+    }
+    return `
+      <section class="planweek">
+        <h2>Sedmica ${week + 1}</h2>
+        <p class="muted small">${shortDate(from)} do ${shortDate(to)}</p>
+        ${slots}
+        <div class="plandays">${cells}</div>
+      </section>`;
+  }).join('');
+
+  return `${backToMore}
+    <h1 class="page-title">Ceo plan</h1>
+    <p class="lead">Dodirni dan da ga otvoriš. Jelo možeš da zameniš dok ga ne skuvaš, a lista za kupovinu se sama prilagodi.</p>
+    ${weeks}`;
+}
+
+function viewSwap() {
+  const { week, slot } = ui.swap;
+  const current = state.dishes[week][slot];
+  const rows = DISH_IDS.map(id => `
+    <button class="list-row hue-${id}" data-action="choose-dish" data-id="${id}">
+      ${boxRow(1, 1)}
+      <span class="lr-main"><span class="lr-title">${RECIPES[id].title}</span><span class="lr-sub">${RECIPES[id].kcal} kcal, ${RECIPES[id].protein} g proteina</span></span>
+      ${id === current ? '<span class="tag is-ok">sada</span>' : ''}
+    </button>`).join('');
+  return `
+    <button class="back" data-action="swap-cancel">${ICON.left} Ceo plan</button>
+    <h1 class="page-title">Zameni jelo</h1>
+    <p class="lead">Sedmica ${week + 1}, jelo ${slot + 1}. Sada je ${RECIPES[current].short}.</p>
+    <div class="list">${rows}</div>`;
+}
+
+function viewNapredak() {
+  const weights = state.weights;
+  const rows = weights.slice().reverse().map(w => `
+    <li class="pantry-row">
+      <span class="si-main">${longDate(parseISO(w.date))}</span>
+      <span class="num">${String(w.kg).replace('.', ',')} kg</span>
+      <button class="icon-btn" aria-label="Obriši merenje" data-action="remove-weight" data-date="${w.date}">${ICON.close}</button>
+    </li>`).join('');
+
+  let change = '';
+  if (weights.length > 1) {
+    const diff = weights[weights.length - 1].kg - weights[0].kg;
+    change = `<p class="lead"><strong>${diff <= 0 ? 'Manje' : 'Više'} za ${Math.abs(diff).toFixed(1).replace('.', ',')} kg</strong> od prvog merenja.</p>`;
+  }
+
+  const stepDays = [];
+  const first = weekOf(ui.day) * 7;
+  for (let d = first; d < first + 7; d++) if (peekDay(d).steps) stepDays.push(peekDay(d).steps);
+  const stepAvg = stepDays.length ? Math.round(stepDays.reduce((a, b) => a + b, 0) / stepDays.length) : null;
+
+  return `${backToMore}
+    <h1 class="page-title">Napredak</h1>
+    <section class="section">
+      <h2>Težina</h2>
+      <p class="lead">Meri se ujutru, posle toaleta, tri puta nedeljno ili svaki dan. Gledaj nedeljni prosek: težina prirodno varira 1 do 2 kg zbog soli, ciklusa i ugljenih hidrata.</p>
+      ${change}
+      ${weights.length > 1 ? weightChart(weights, state.goal) : ''}
+      <div class="row" style="margin-top:12px">
+        <label class="field"><span>Datum</span><input class="input" id="weight-date" type="date" value="${toISO(new Date())}"></label>
+        <label class="field"><span>Težina, kg</span><input class="input" id="weight-kg" type="number" inputmode="decimal" step="0.1" min="30" max="250" data-enter="add-weight"></label>
+        <button class="btn" data-action="add-weight">Upiši</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label class="field"><span>Ciljna težina, kg (po želji)</span><input class="input" type="number" inputmode="decimal" step="0.1" min="30" max="250" value="${state.goal || ''}" data-change="goal"></label>
+      </div>
+      ${rows ? `<ul class="card">${rows}</ul>` : ''}
+    </section>
+    <section class="section">
+      <h2>Koraci</h2>
+      <p class="lead">${stepAvg === null ? 'Upiši korake na kartici Danas da vidiš prosek sedmice.' : 'Prosek za sedmicu ' + (weekOf(ui.day) + 1) + ': <strong>' + stepAvg.toLocaleString('sr-Latn') + '</strong> koraka dnevno, na osnovu ' + stepDays.length + ' ' + plural(stepDays.length, 'dana', 'dana', 'dana') + '.'}</p>
+    </section>`;
+}
+
+function weightChart(weights, goal) {
+  const W = 320, H = 150, padL = 34, padR = 10, padT = 12, padB = 22;
+  const values = weights.map(w => w.kg).concat(goal ? [goal] : []);
+  const lo = Math.floor(Math.min(...values) - 0.5), hi = Math.ceil(Math.max(...values) + 0.5);
+  const t0 = parseISO(weights[0].date), span = Math.max(1, daysBetween(t0, parseISO(weights[weights.length - 1].date)));
+  const x = w => padL + (W - padL - padR) * daysBetween(t0, parseISO(w.date)) / span;
+  const y = kg => padT + (H - padT - padB) * (hi - kg) / (hi - lo);
+  const line = weights.map(w => x(w).toFixed(1) + ',' + y(w.kg).toFixed(1)).join(' ');
+  return `
+    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Grafikon težine">
+      <line class="axis" x1="${padL}" y1="${y(lo)}" x2="${W - padR}" y2="${y(lo)}"/>
+      <line class="axis" x1="${padL}" y1="${y(hi)}" x2="${W - padR}" y2="${y(hi)}"/>
+      <text x="${padL - 6}" y="${y(hi) + 4}" text-anchor="end">${hi}</text>
+      <text x="${padL - 6}" y="${y(lo) + 4}" text-anchor="end">${lo}</text>
+      ${goal ? `<line class="goal" x1="${padL}" y1="${y(goal)}" x2="${W - padR}" y2="${y(goal)}"/><text x="${W - padR}" y="${y(goal) - 4}" text-anchor="end">cilj</text>` : ''}
+      <polyline class="path" points="${line}"/>
+      ${weights.map(w => `<circle class="dot" r="3.2" cx="${x(w).toFixed(1)}" cy="${y(w.kg).toFixed(1)}"/>`).join('')}
+      <text x="${padL}" y="${H - 5}">${shortDate(t0)}</text>
+      <text x="${W - padR}" y="${H - 5}" text-anchor="end">${shortDate(parseISO(weights[weights.length - 1].date))}</text>
+    </svg>`;
+}
+
+function viewPravila() {
+  const rule = (title, text) => `<p class="note"><strong>${title}</strong> ${text}</p>`;
+  return `${backToMore}
+    <h1 class="page-title">Pravila plana</h1>
+    ${rule('Okvir.', 'Oko 1500 kcal i 110 do 120 g proteina dnevno, 8 do 10 hiljada koraka, trening snage tri puta nedeljno i tri kuvanja po 4 porcije.')}
+    ${rule('Merenje hrane.', 'Meso, pirinač, bulgur i krompir meri sirove. Ulje, orašaste plodove i tahini uvek meri, jer se tu najlakše potkrade 200 kcal.')}
+    ${rule('Čuvanje hrane.', 'Kuvano jelo pojedi u roku od 3 dana. Pirinač i bulgur ohladi brzo i stavi u frižider u roku od sat vremena, a na poslu ih zagrej da budu vreli.')}
+    ${rule('Riba.', 'Bar jednom nedeljno, najbolje losos. Panirana riba iz zamrzivača može povremeno: uzmi porciju od oko 250 kcal i uz nju salatu umesto krompira.')}
+    ${rule('Slatko.', 'Keksić iz kancelarije jednom do dva puta nedeljno, umesto dela užine, a ne povrh nje.')}
+    ${rule('Šta da očekuješ.', 'Prve nedelje 1 do 1,5 kg manje, od čega je deo voda. Posle toga 0,5 do 0,8 kg nedeljno.')}
+    ${rule('Ako dve nedelje nema pomaka.', 'Prvo proveri merenje ulja, orašastih plodova i tahinija, pa dodaj korake. Ne spuštaj unos ispod 1400 kcal.')}
+    ${rule('Ako umor raste.', 'Ako si umornija, vrti ti se ili loše spavaš, dodaj 150 do 200 kcal dnevno. Sporije mršavljenje je bolje od odustajanja.')}
+    ${rule('Posle četiri nedelje.', 'Ne vraćaj se odmah na staro. Dodaj po 200 kcal nedeljno dok težina ne stane.')}
+    <p class="lead small">Ovaj plan je opšta preporuka i ne zamenjuje savet lekara ili dijetetičara.</p>`;
+}
+
+function viewPodesavanja() {
+  return `${backToMore}
+    <h1 class="page-title">Podešavanja</h1>
+    <section class="section">
+      <h2>Početak plana</h2>
+      <p class="lead">Sada: ${longDate(parseISO(state.startDate))}. Ako promeniš datum, štiklirano ostaje vezano za redni dan plana.</p>
+      <div class="row" style="margin-top:10px">
+        <label class="field"><span>Novi datum početka</span><input class="input" id="new-start" type="date" value="${state.startDate}"></label>
+        <button class="btn" data-action="change-start">Sačuvaj</button>
+      </div>
+    </section>
+    <section class="section">
+      <h2>Rezervna kopija</h2>
+      <p class="lead">Kopiraj tekst ispod da preneseš podatke na drugi uređaj ili da ih sačuvaš za svaki slučaj.</p>
+      <label class="field" style="margin-top:10px"><span>Tvoji podaci</span>
+        <textarea class="input" id="backup-out" rows="4" readonly>${esc(JSON.stringify(state))}</textarea></label>
+      <div class="tl-actions"><button class="btn btn-small" data-action="copy-backup">Kopiraj</button></div>
+      <label class="field" style="margin-top:14px"><span>Nalepi kopiju sa drugog uređaja</span>
+        <textarea class="input" id="backup-in" rows="3"></textarea></label>
+      <div class="tl-actions"><button class="btn btn-small" data-action="restore-backup">Učitaj kopiju</button></div>
+    </section>
+    <section class="section">
+      <h2>Brisanje</h2>
+      <p class="lead">Briše sve što si štiklirala i upisala i vraća aplikaciju na početak.</p>
+      <div class="tl-actions"><button class="btn btn-small${ui.confirmReset ? ' btn-primary' : ''}" data-action="reset">${ui.confirmReset ? 'Potvrdi brisanje svih podataka' : 'Obriši sve podatke'}</button></div>
+    </section>`;
+}
+
+/* ==========================================================================
+   6. ACTIONS
+   One click handler for the whole app. A button says what it does with
+   data-action, and the matching function below changes the state.
+   ========================================================================== */
+
+const $ = id => document.getElementById(id);
+const VIEWS = { danas: viewDanas, recepti: viewRecepti, kupovina: viewKupovina, vezbe: viewVezbe, vise: viewVise };
+
+function render() {
+  $('view').innerHTML = state.startDate ? VIEWS[ui.tab]() : viewStart();
+  document.querySelector('.tabs').hidden = !state.startDate;
+  document.querySelectorAll('.tab').forEach(btn => {
+    const on = btn.dataset.tab === ui.tab;
+    btn.classList.toggle('is-on', on);
+    if (on) btn.setAttribute('aria-current', 'page'); else btn.removeAttribute('aria-current');
+  });
+  startDemos();
+}
+
+// Show another page: draw it and go back to the top
+function go() {
+  render();
+  window.scrollTo(0, 0);
+}
+
+// Save and redraw after a change on the current page
+function update() {
+  save();
+  render();
+}
+
+let toastTimer = null;
+function toast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.classList.add('is-on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('is-on'), 2600);
+}
+
+const clampDay = i => Math.min(PLAN_DAYS - 1, Math.max(0, i));
+
+function beginPlan(dateText) {
+  if (!dateText) return;
+  state.startDate = dateText;
+  ui.day = clampDay(todayIndex());
+  ui.shopWeek = upcomingShopWeek();
+  ui.tab = 'danas';
+  save();
+  go();
+}
+
+// ---------- Rest and hold timer ----------
+
+let timer = null;               // { endsAt, onDone }
+let timerInterval = null;
+
+function startTimer(label, seconds, onDone) {
+  timer = { endsAt: Date.now() + seconds * 1000, onDone: onDone || null };
+  const bar = $('timer');
+  bar.classList.remove('is-over');
+  bar.innerHTML = `<span class="num" id="timer-num"></span><span class="tb-label">${label}</span><button class="btn btn-small" data-action="timer-stop">Preskoči</button>`;
+  bar.hidden = false;
+  document.body.classList.add('has-timer');
+  clearInterval(timerInterval);
+  timerInterval = setInterval(tickTimer, 250);
+  tickTimer();
+}
+
+function stopTimer() {
+  timer = null;
+  clearInterval(timerInterval);
+  $('timer').hidden = true;
+  document.body.classList.remove('has-timer');
+}
+
+function tickTimer() {
+  if (!timer) return;
+  const left = Math.ceil((timer.endsAt - Date.now()) / 1000);
+  if (left > 0) {
+    $('timer-num').textContent = Math.floor(left / 60) + ':' + pad2(left % 60);
+    return;
+  }
+  const onDone = timer.onDone;
+  stopTimer();
+  if (navigator.vibrate) navigator.vibrate(200);
+  if (onDone) { onDone(); return; }
+
+  const bar = $('timer');
+  bar.classList.add('is-over');
+  bar.innerHTML = `<span class="tb-label">Pauza je gotova, sledeća serija.</span><button class="btn btn-small" data-action="timer-stop">U redu</button>`;
+  bar.hidden = false;
+  setTimeout(() => { if (!timer) $('timer').hidden = true; }, 6000);
+}
+
+// Called after a set is ticked: start the rest, move on, or finish the workout
+function afterSet(i, ex) {
+  const day = getDay(i);
+  const allDone = EXERCISES.every(e => (day.sets[e.id] || 0) >= e.sets);
+  if (allDone) {
+    day.done.trening = true;
+    stopTimer();
+    toast('Trening je završen.');
+    return;
+  }
+  if (day.sets[ex.id] >= ex.sets) {
+    const next = EXERCISES.find(e => (day.sets[e.id] || 0) < e.sets);
+    if (next) ui.exercise = next.id;
+  }
+  startTimer('Pauza', state.settings.rest);
+}
+
+// ---------- Actions ----------
+
+const ACTIONS = {
+  // Navigation
+  'tab'(d) {
+    if (ui.tab === d.tab) { ui.recipe = null; ui.more = null; ui.swap = null; }
+    if (d.tab === 'recepti') ui.recipeBack = 'recepti';
+    ui.tab = d.tab;
+    ui.pickOpen = null;
+    ui.confirmReset = false;
+    go();
+  },
+  'start'(d) { beginPlan(d.date); },
+  'start-from-input'() { beginPlan($('start-date').value); },
+  'goto-day'(d) { ui.day = Number(d.day); ui.tab = 'danas'; ui.pickOpen = null; go(); },
+  'open-recipe'(d) { if (ui.tab !== 'recepti') ui.recipeBack = ui.tab; ui.tab = 'recepti'; ui.recipe = d.id; go(); },
+  'close-recipe'() { ui.recipe = null; ui.tab = ui.recipeBack; ui.recipeBack = 'recepti'; go(); },
+  'open-shop'(d) { ui.tab = 'kupovina'; ui.shopView = 'lista'; ui.shopWeek = Number(d.week); go(); },
+  'more'(d) { ui.more = d.page || null; ui.swap = null; ui.confirmReset = false; go(); },
+
+  // Today
+  'toggle-task'(d) {
+    const now = toggleTask(Number(d.day), d.key);
+    if (d.key === 'kuvanje' && now) toast('Četiri kutije su u frižideru.');
+    update();
+  },
+  'toggle-pick'(d) { ui.pickOpen = ui.pickOpen === d.key ? null : d.key; render(); },
+  'pick'(d) { getDay(Number(d.day)).pick[d.key] = d.value; ui.pickOpen = null; update(); },
+  'toggle-extra'(d) { const day = getDay(Number(d.day)); day.extra = !day.extra; update(); },
+
+  // Shopping list
+  'shop-view'(d) { ui.shopView = d.view; go(); },
+  'shop-week'(d) { ui.shopWeek = Number(d.week); render(); },
+  'toggle-shop'(d) { toggleShopItem(Number(d.week), d.id); update(); },
+  'add-extra-item'() {
+    const name = $('extra-name').value.trim();
+    if (!name) return;
+    shopOf(ui.shopWeek).extra.push({ id: 'x' + Date.now(), name, done: false });
+    update();
+  },
+  'toggle-extra-item'(d) {
+    const item = shopOf(Number(d.week)).extra.find(x => x.id === d.id);
+    if (item) item.done = !item.done;
+    update();
+  },
+  'remove-extra-item'(d) {
+    const shop = shopOf(Number(d.week));
+    shop.extra = shop.extra.filter(x => x.id !== d.id);
+    update();
+  },
+
+  // Pantry
+  'pantry-step'(d) { state.pantry[d.id] = Math.max(0, (state.pantry[d.id] || 0) + Number(d.delta)); update(); },
+  'pantry-toggle'(d) { state.pantry[d.id] = !state.pantry[d.id]; update(); },
+  'add-custom'() {
+    const name = $('custom-name').value.trim();
+    if (!name) return;
+    state.custom.push({ id: 'c' + Date.now(), name, qty: 1 });
+    update();
+  },
+  'custom-step'(d) {
+    const item = state.custom.find(x => x.id === d.id);
+    if (item) item.qty = Math.max(0, item.qty + Number(d.delta));
+    update();
+  },
+  'remove-custom'(d) { state.custom = state.custom.filter(x => x.id !== d.id); update(); },
+
+  // Workout
+  'open-exercise'(d) { ui.exercise = ui.exercise === d.id ? null : d.id; render(); },
+  'toggle-demo'() { ui.demoPaused = !ui.demoPaused; render(); },
+  'set-done'(d) {
+    const i = Number(d.day), n = Number(d.set);
+    const ex = EXERCISES.find(e => e.id === d.id);
+    const day = getDay(i);
+    if (n <= (day.sets[ex.id] || 0)) {          // tapping a finished set takes it back
+      day.sets[ex.id] = n - 1;
+      day.done.trening = false;
+      stopTimer();
+    } else {
+      day.sets[ex.id] = n;
+      afterSet(i, ex);
+    }
+    update();
+  },
+  'set-rest'(d) { state.settings.rest = Number(d.seconds); update(); },
+  'set-hold'(d) { state.settings.hold = Number(d.seconds); update(); },
+  'start-hold'(d) {
+    const i = Number(d.day);
+    const plank = EXERCISES.find(e => e.hold);
+    if ((peekDay(i).sets[plank.id] || 0) >= plank.sets) { toast('Sve serije su već urađene.'); return; }
+    startTimer('Plank, drži', state.settings.hold, () => {
+      const day = getDay(i);
+      day.sets[plank.id] = Math.min(plank.sets, (day.sets[plank.id] || 0) + 1);
+      afterSet(i, plank);
+      update();
+    });
+  },
+  'timer-stop'() { stopTimer(); },
+
+  // Plan overview
+  'swap'(d) { ui.swap = { week: Number(d.week), slot: Number(d.slot) }; go(); },
+  'swap-cancel'() { ui.swap = null; go(); },
+  'choose-dish'(d) {
+    state.dishes[ui.swap.week][ui.swap.slot] = d.id;
+    ui.swap = null;
+    save();
+    go();
+  },
+
+  // Progress
+  'add-weight'() {
+    const date = $('weight-date').value;
+    const kg = Number(String($('weight-kg').value).replace(',', '.'));
+    if (!date || !(kg >= 30 && kg <= 250)) { toast('Upiši težinu u kilogramima.'); return; }
+    state.weights = state.weights.filter(w => w.date !== date);
+    state.weights.push({ date, kg: Math.round(kg * 10) / 10 });
+    state.weights.sort((a, b) => a.date.localeCompare(b.date));
+    update();
+  },
+  'remove-weight'(d) { state.weights = state.weights.filter(w => w.date !== d.date); update(); },
+
+  // Settings
+  'change-start'() {
+    const value = $('new-start').value;
+    if (!value) return;
+    state.startDate = value;
+    ui.day = clampDay(todayIndex());
+    ui.shopWeek = upcomingShopWeek();
+    update();
+    toast('Datum početka je sačuvan.');
+  },
+  async 'copy-backup'() {
+    const box = $('backup-out');
+    box.select();
+    try {
+      await navigator.clipboard.writeText(box.value);
+      toast('Kopirano.');
+    } catch (err) {
+      toast('Tekst je označen, kopiraj ga ručno.');
+    }
+  },
+  'restore-backup'() {
+    let data = null;
+    try { data = JSON.parse($('backup-in').value); } catch (err) { data = null; }
+    if (!data || !data.version || !data.days || !Array.isArray(data.dishes)) {
+      toast('Ovo nije ispravna kopija.');
+      return;
+    }
+    state = Object.assign(defaultState(), data);
+    if (state.startDate) ui.day = clampDay(todayIndex());
+    save();
+    go();
+    toast('Kopija je učitana.');
+  },
+  'reset'() {
+    if (!ui.confirmReset) { ui.confirmReset = true; render(); return; }
+    ui.confirmReset = false;
+    ui.tab = 'danas';
+    ui.more = null;
+    state = defaultState();
+    stopTimer();
+    save();
+    go();
+  }
+};
+
+// Identifies a button by its action and data, to find it again after a redraw
+const buttonKey = el => JSON.stringify(Object.entries(el.dataset).sort());
+
+document.addEventListener('click', event => {
+  const el = event.target.closest('[data-action]');
+  if (!el || el.disabled) return;
+  const action = ACTIONS[el.dataset.action];
+  if (!action) return;
+  const key = buttonKey(el);
+  action({ ...el.dataset });
+
+  // the page was redrawn, so put the keyboard focus back on the same button
+  if (!document.body.contains(el)) {
+    const same = [...document.querySelectorAll('[data-action]')].find(x => buttonKey(x) === key);
+    if (same) same.focus({ preventScroll: true });
+  }
+});
+
+// Number fields that save when the value changes
+document.addEventListener('change', event => {
+  const el = event.target;
+  if (el.dataset.change === 'steps') {
+    getDay(Number(el.dataset.day)).steps = Math.max(0, Math.round(Number(el.value) || 0)) || null;
+    save();
+  }
+  if (el.dataset.change === 'goal') {
+    const kg = Number(String(el.value).replace(',', '.'));
+    state.goal = kg >= 30 && kg <= 250 ? kg : null;
+    update();
+  }
+});
+
+// Enter in a text field does the same as the button next to it
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Enter' || !event.target.dataset || !event.target.dataset.enter) return;
+  event.preventDefault();
+  ACTIONS[event.target.dataset.enter]({});
+});
+
+// When the app is opened again on a new day, move from yesterday to today
+let lastToday = null;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !state || !state.startDate) return;
+  const today = clampDay(todayIndex());
+  if (lastToday !== null && today !== lastToday && ui.day === lastToday) {
+    ui.day = today;
+    render();
+  }
+  lastToday = today;
+});
+
+async function init() {
+  const saved = await store.load();
+  state = Object.assign(defaultState(), saved || {});
+  state.settings = Object.assign(defaultState().settings, state.settings);
+  // respect the "reduce motion" system setting: demos start paused
+  ui.demoPaused = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (state.startDate) {
+    ui.day = clampDay(todayIndex());
+    ui.shopWeek = upcomingShopWeek();
+    lastToday = ui.day;
+  }
+  render();
+}
+
+init();
+</script>
+</body>
+</html>
