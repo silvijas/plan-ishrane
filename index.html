@@ -231,6 +231,10 @@ a.link { display: inline-block; }
 .daysum-main .num { font-size: 26px; }
 .daysum-main .unit { font-size: 14px; color: var(--ink-3); margin-left: 4px; font-family: var(--f-body); font-weight: 400; }
 .daysum .row { margin-top: 12px; align-items: center; }
+.daysum h2 { font-size: 16px; margin-bottom: 6px; }
+.daysum-tasks { font-size: 16px; }
+.daysum-tasks .num { font-size: 26px; margin-right: 4px; }
+.tl.is-optional { opacity: 0.75; }
 .steps-input { width: 120px; }
 .extra { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .extra span { flex: 1; font-size: 15px; }
@@ -731,6 +735,10 @@ const QUICK = {
     group: 'salata', name: 'Omlet sa kesom', kcal: 460, protein: 36,
     text: '2 jaja, 150 g keso mini, 200 g povrća, 1 kašičica ulja i 1 kriška raženog hleba.'
   },
+  svinjski: {
+    group: 'meso', name: 'Svinjski file sa brokolijem', kcal: 465, protein: 43,
+    text: '150 g svinjskog filea na medaljone, premazanog senfom i pola kašičice meda, 200 g krompira na kocke i 250 g brokolija sa 1 kašičicom maslinovog ulja. Sve u air fryeru na 200 stepeni: krompir 20 minuta, meso i brokoli poslednjih 10 do 12.'
+  },
   slobodno: {
     group: 'salata', name: 'Slobodniji obrok', kcal: null, protein: null,
     text: 'Restoran ili društvo. Pojedi normalnu porciju i sutra nastavi po planu.'
@@ -1078,38 +1086,76 @@ function pickOf(i, key) {
   return mealFor(i, key).group === 'riba' ? 'losos' : 'salata';
 }
 
+// A lunch or dinner can be swapped for a quick meal ('svinjski') or for a box
+// that is still in the fridge ('box:week:slot'). null when it is as planned.
+const swapOf = (i, which) => (peekDay(i).swap || {})[which] || null;
+
+function parseBoxSwap(swap) {
+  const [, week, slot] = swap.split(':').map(Number);
+  return { week, slot };
+}
+
+// What is actually eaten: the planned meal, or what it was swapped for
+function servedFor(i, which) {
+  const planned = mealFor(i, which);
+  const swap = swapOf(i, which);
+  if (!swap) return planned;
+  if (swap.startsWith('box:')) {
+    const { week, slot } = parseBoxSwap(swap);
+    return { type: 'dish', week, slot, dishId: state.dishes[week][slot], fromFridge: true, planned };
+  }
+  return { type: 'quick', pickId: swap, swapped: true, planned };
+}
+
 // Lunch or dinner with its name and numbers filled in
 function mealInfo(i, which) {
-  const meal = mealFor(i, which);
+  const meal = servedFor(i, which);
   if (meal.type === 'dish') {
     const r = RECIPES[meal.dishId];
     return { ...meal, title: r.short, kcal: r.kcal, protein: r.protein };
   }
-  const id = pickOf(i, which);
+  const id = meal.pickId || pickOf(i, which);
   const q = QUICK[id];
   return { ...meal, pickId: id, title: q.name, text: q.text, kcal: q.kcal, protein: q.protein };
 }
 
+// Calories and protein of the day: everything planned, and what is already
+// checked off as eaten. A free meal (kcal null) is left out of both.
 function dayTotals(i) {
-  let kcal = 20, protein = 1, open = false;          // the morning tea with milk
-  const add = x => { kcal += x.kcal; protein += x.protein; };
-  add(BREAKFASTS[pickOf(i, 'dorucak')]);
-  add(SNACKS[pickOf(i, 'uzina')]);
+  const day = peekDay(i);
+  const plan = { kcal: 0, protein: 0 }, eaten = { kcal: 0, protein: 0 };
+  let open = false;
+  const add = (x, key) => {
+    plan.kcal += x.kcal; plan.protein += x.protein;
+    if (day.done[key]) { eaten.kcal += x.kcal; eaten.protein += x.protein; }
+  };
+  add({ kcal: 20, protein: 1 }, 'dorucak');          // the morning tea with milk
+  add(BREAKFASTS[pickOf(i, 'dorucak')], 'dorucak');
+  add(SNACKS[pickOf(i, 'uzina')], 'uzina');
   for (const which of ['rucak', 'vecera']) {
     const meal = mealInfo(i, which);
-    if (meal.kcal === null) open = true; else add(meal);
+    if (meal.kcal === null) open = true; else add(meal, which);
   }
-  if (peekDay(i).extra) kcal += 175;
-  return { kcal, protein, open };
+  if (day.extra) { plan.kcal += 175; eaten.kcal += 175; }
+  return { plan, eaten, open };
 }
 
-// Tasks that count toward the day's progress
+const TASK_NAMES = {
+  dorucak: 'doručak', rucak: 'ručak', setnja1: 'šetnja posle ručka', uzina: 'užina',
+  vecera: 'večera', setnja2: 'šetnja posle večere', kuvanje: 'kuvanje', trening: 'trening'
+};
+
+// Tasks that count toward the day's progress. Training counts on the planned
+// days, and on any other day once it is started.
 function dayTasks(i) {
+  const day = peekDay(i);
   const tasks = ['dorucak', 'rucak', 'setnja1', 'uzina', 'vecera', 'setnja2'];
-  if (mealFor(i, 'vecera').cook) tasks.push('kuvanje');
-  if (isWorkoutDay(i)) tasks.push('trening');
+  if (mealFor(i, 'vecera').cook && (!swapOf(i, 'vecera') || day.done.kuvanje)) tasks.push('kuvanje');
+  if (isWorkoutDay(i) || day.done.trening || setsDoneOn(i) > 0) tasks.push('trening');
   return tasks;
 }
+
+const setsDoneOn = i => Object.values(peekDay(i).sets).reduce((a, b) => a + b, 0);
 
 function dayProgress(i) {
   const done = peekDay(i).done;
@@ -1121,13 +1167,22 @@ function dayProgress(i) {
 
 const isCooked = (week, slot) => !!peekDay(week * 7 + COOK_DAY[slot]).done.kuvanje;
 
+// Boxes of a dish still in the fridge. A planned box meal that was swapped
+// leaves its box in the fridge; a meal swapped for a box from the fridge takes one.
 function boxesLeft(week, slot) {
   if (!isCooked(week, slot)) return 0;
   let eaten = 0;
   for (const [offset, meal] of BOX_MEALS[slot]) {
-    if (peekDay(week * 7 + offset).done[meal]) eaten++;
+    const d = week * 7 + offset;
+    if (peekDay(d).done[meal] && !swapOf(d, meal)) eaten++;
   }
-  return 4 - eaten;
+  const key = 'box:' + week + ':' + slot;
+  for (const [d, day] of Object.entries(state.days)) {
+    for (const meal of ['rucak', 'vecera']) {
+      if (day.done[meal] && swapOf(Number(d), meal) === key) eaten++;
+    }
+  }
+  return Math.max(0, 4 - eaten);
 }
 
 // Dishes that still have boxes in the fridge on plan day i
@@ -1137,7 +1192,7 @@ function fridgeOn(i) {
     for (let slot = 0; slot < 3; slot++) {
       if (week * 7 + COOK_DAY[slot] > i) continue;
       const left = boxesLeft(week, slot);
-      if (left > 0) list.push({ dishId: state.dishes[week][slot], left });
+      if (left > 0) list.push({ week, slot, dishId: state.dishes[week][slot], left });
     }
   }
   return list;
@@ -1744,18 +1799,19 @@ function timeline(i) {
   rows.push(mealRow(i, 'vecera', '18:30', 'Večera'));
   rows.push(quietRow(i, 'setnja2', 'Šetnja posle večere, 10 do 15 minuta'));
 
-  const setsDone = Object.values(day.sets).reduce((a, b) => a + b, 0);
-  if (isWorkoutDay(i) || setsDone > 0) {
+  {
+    const setsDone = setsDoneOn(i);
     const done = !!day.done.trening;
+    const planned = isWorkoutDay(i);
     rows.push(`
-      <li class="tl${done ? ' is-done' : ''}">
+      <li class="tl${done ? ' is-done' : ''}${planned || setsDone > 0 || done ? '' : ' is-optional'}">
         <span class="tl-time"></span>
         <div class="tl-main">
           <div class="tl-head">
-            <div class="tl-heading"><p class="tl-kind">Trening</p><h3 class="tl-title">Trening snage, 25 do 30 minuta</h3></div>
+            <div class="tl-heading"><p class="tl-kind">${planned ? 'Trening' : 'Trening, po želji'}</p><h3 class="tl-title">Trening snage, 25 do 30 minuta</h3></div>
             ${checkBtn('toggle-task', done, 'Trening', `data-day="${i}" data-key="trening"`)}
           </div>
-          <p class="tl-meta">Urađeno ${setsDone} od ${totalSets()} serija.</p>
+          <p class="tl-meta">${planned || setsDone > 0 ? `Urađeno ${setsDone} od ${totalSets()} serija.` : 'Danas nije u planu. Ako želiš, vežbaj i danas, a trening će se računati u zadatke.'}</p>
           <div class="tl-actions"><button class="link" data-action="tab" data-tab="vezbe">Otvori trening</button></div>
         </div>
       </li>`);
@@ -1766,7 +1822,7 @@ function timeline(i) {
     rows.push(quietRow(i, 'humus', 'Napravi laki humus, po želji', `<button class="link" data-action="open-recipe" data-id="humus">Recept</button>`));
   }
 
-  const tomorrow = i + 1 < PLAN_DAYS ? mealFor(i + 1, 'rucak') : null;
+  const tomorrow = i + 1 < PLAN_DAYS ? servedFor(i + 1, 'rucak') : null;
   if (tomorrow && tomorrow.type === 'dish') {
     const cookedLater = dinner.cook && dinner.dishId === tomorrow.dishId;
     rows.push(`
@@ -1804,38 +1860,105 @@ function optionRow(i, key, time, kind, options, extraText) {
     </li>`;
 }
 
-// Lunch or dinner: a boxed dish, a cooking evening or a quick meal
-function mealRow(i, which, time, kind) {
-  const meal = mealFor(i, which);
-  if (meal.type === 'quick') {
-    const group = Object.fromEntries(Object.entries(QUICK).filter(([, q]) => q.group === meal.group));
-    return optionRow(i, which, time, kind, group);
+// What a lunch or dinner can be changed to: the planned dish, any quick meal,
+// or a box that is still in the fridge
+function mealChoices(i, which) {
+  const planned = mealFor(i, which), served = servedFor(i, which), swap = swapOf(i, which);
+  const choices = [];
+  if (planned.type === 'dish') {
+    choices.push({ value: 'plan', label: 'Po planu: ' + RECIPES[planned.dishId].short, on: !swap });
   }
+  const quickId = served.type === 'quick' ? served.pickId || pickOf(i, which) : null;
+  for (const [id, q] of Object.entries(QUICK)) {
+    choices.push({ value: 'q:' + id, label: q.name, on: id === quickId });
+  }
+  const boxes = fridgeOn(i).map(it => ({ ...it, key: 'box:' + it.week + ':' + it.slot }));
+  if (swap && swap.startsWith('box:') && !boxes.some(b => b.key === swap)) {
+    const { week, slot } = parseBoxSwap(swap);
+    boxes.push({ week, slot, dishId: state.dishes[week][slot], key: swap });
+  }
+  for (const b of boxes) {
+    if (planned.type === 'dish' && b.week === planned.week && b.slot === planned.slot) continue;
+    choices.push({ value: b.key, label: 'Iz frižidera: ' + RECIPES[b.dishId].short, on: swap === b.key });
+  }
+  return choices;
+}
 
-  const r = RECIPES[meal.dishId];
+function choiceChips(i, which, kind) {
+  const chips = mealChoices(i, which).map(c =>
+    `<button class="chip${c.on ? ' is-on' : ''}" aria-pressed="${c.on}" data-action="choose-meal" data-day="${i}" data-key="${which}" data-value="${c.value}">${esc(c.label)}</button>`).join('');
+  return `<div class="chips" role="group" aria-label="${kind}, izbor">${chips}</div>`;
+}
+
+// Lunch or dinner: a boxed dish, a cooking evening or a quick meal, as planned or swapped
+function mealRow(i, which, time, kind) {
+  const planned = mealFor(i, which), meal = servedFor(i, which), swap = swapOf(i, which);
   const day = peekDay(i);
   const done = !!day.done[which];
-  const left = 4 - meal.box + (done ? 0 : 1);
-  const cooked = !!day.done.kuvanje;
+  const open = ui.pickOpen === which;
+  const chips = open ? choiceChips(i, which, kind) : '';
+  const changeLink = `<button class="link" data-action="toggle-pick" data-key="${which}">${open ? 'Zatvori izbor' : planned.type === 'dish' ? 'Zameni' : 'Promeni'}</button>`;
+  const check = checkBtn('toggle-task', done, kind, `data-day="${i}" data-key="${which}"`);
 
-  const cookPart = !meal.cook ? '' : `
+  // A swapped meal says what it replaces, and a swapped cooking evening explains the boxes
+  let swapNote = '';
+  if (swap && planned.type === 'dish') {
+    swapNote = `Umesto: ${RECIPES[planned.dishId].short}.`;
+    if (planned.cook) {
+      swapNote += day.done.kuvanje
+        ? ' Jelo je ipak skuvano, pa jedna kutija više ostaje u frižideru.'
+        : ' Ako ovo jelo ne skuvaš danas, zameni i ručkove sa njim narednih dana.';
+    }
+  }
+  const cookPart = !planned.cook ? '' : `
     <div class="subtask">
-      <span>Skuvano i podeljeno u 4 kutije</span>
-      ${checkBtn('toggle-task', cooked, 'Skuvano', `data-day="${i}" data-key="kuvanje"`)}
+      <span>${swap ? 'Ako ipak kuvaš danas, za ručkove: skuvano i podeljeno u 4 kutije' : 'Skuvano i podeljeno u 4 kutije'}</span>
+      ${checkBtn('toggle-task', !!day.done.kuvanje, 'Skuvano', `data-day="${i}" data-key="kuvanje"`)}
     </div>`;
 
-  return `
-    <li class="tl${done ? ' is-done' : ''}${meal.cook ? ' is-cook' : ''}">
+  if (meal.type === 'quick') {
+    const q = QUICK[meal.pickId || pickOf(i, which)];
+    return `
+    <li class="tl${done ? ' is-done' : ''}">
       <span class="tl-time">${time}</span>
       <div class="tl-main">
         <div class="tl-head">
-          <div class="tl-heading"><p class="tl-kind">${kind}${meal.cook ? ', danas kuvaš' : ''}</p><h3 class="tl-title">${r.title}</h3></div>
-          ${checkBtn('toggle-task', done, kind, `data-day="${i}" data-key="${which}"`)}
+          <div class="tl-heading"><p class="tl-kind">${kind}${swapNote ? ', zamena' : ''}</p><h3 class="tl-title">${q.name}</h3></div>
+          ${check}
         </div>
-        <p class="tl-meta hue-${meal.dishId}">${boxRow(4, left, true)} Kutija ${meal.box} od 4</p>
-        <p class="tl-text">${meal.cook ? 'Kuvanje traje oko ' + r.minutes + ' minuta. Prva porcija je večeras, tri idu u frižider.' : r.work}</p>
+        ${chips}
+        <p class="tl-text">${q.text}</p>
+        ${swapNote ? `<p class="tl-meta">${swapNote}</p>` : ''}
+        <p class="tl-meta">${numbersLine(q)}</p>
+        <div class="tl-actions">${changeLink}</div>
+        ${cookPart}
+      </div>
+    </li>`;
+  }
+
+  const r = RECIPES[meal.dishId];
+  const cookNow = meal.cook && !swap;
+  const left = meal.fromFridge ? boxesLeft(meal.week, meal.slot) : 4 - meal.box + (done ? 0 : 1);
+  const boxLabel = meal.fromFridge ? 'Kutija iz frižidera' : `Kutija ${meal.box} od 4`;
+  const notCooked = !meal.fromFridge && !meal.cook && !isCooked(meal.week, meal.slot)
+    && i > meal.week * 7 + COOK_DAY[meal.slot];
+  const text = cookNow ? 'Kuvanje traje oko ' + r.minutes + ' minuta. Prva porcija je večeras, tri idu u frižider.' : r.work;
+
+  return `
+    <li class="tl${done ? ' is-done' : ''}${cookNow ? ' is-cook' : ''}">
+      <span class="tl-time">${time}</span>
+      <div class="tl-main">
+        <div class="tl-head">
+          <div class="tl-heading"><p class="tl-kind">${kind}${cookNow ? ', danas kuvaš' : swapNote ? ', zamena' : ''}</p><h3 class="tl-title">${r.title}</h3></div>
+          ${check}
+        </div>
+        ${chips}
+        <p class="tl-meta hue-${meal.dishId}">${boxRow(4, Math.min(4, left), true)} ${boxLabel}</p>
+        <p class="tl-text">${text}</p>
+        ${notCooked ? '<p class="tl-meta">Kuvanje ovog jela nije štiklirano. Ako nije skuvano, zameni ovaj obrok.</p>' : ''}
+        ${swapNote ? `<p class="tl-meta">${swapNote}</p>` : ''}
         <p class="tl-meta">${numbersLine(r)}</p>
-        <div class="tl-actions"><button class="link" data-action="open-recipe" data-id="${meal.dishId}">${meal.cook ? 'Otvori recept' : 'Recept'}</button></div>
+        <div class="tl-actions"><button class="link" data-action="open-recipe" data-id="${meal.dishId}">${cookNow ? 'Otvori recept' : 'Recept'}</button>${changeLink}</div>
         ${cookPart}
       </div>
     </li>`;
@@ -1858,20 +1981,27 @@ function quietRow(i, key, text, extra) {
 
 function daySummary(i) {
   const day = peekDay(i), total = dayTotals(i), p = dayProgress(i);
+  const left = dayTasks(i).filter(t => !day.done[t]).map(t => TASK_NAMES[t]);
   return `
     <section class="daysum">
+      <h2>Kalorije</h2>
       <div class="daysum-main">
-        <span class="num">${total.kcal}<span class="unit">kcal</span></span>
-        <span class="num">${total.protein}<span class="unit">g proteina</span></span>
+        <span class="num">${total.eaten.kcal}<span class="unit">od ${total.plan.kcal} kcal</span></span>
+        <span class="num">${total.eaten.protein}<span class="unit">od ${total.plan.protein} g proteina</span></span>
       </div>
-      <p class="muted small">Zbir izabranih obroka${total.open ? ', bez slobodnijeg obroka' : ''}. Obavljeno ${p.done} od ${p.total}.</p>
-      <div class="row">
-        <label class="field"><span>Koraci danas, cilj je 8 do 10 hiljada</span>
-          <input class="input steps-input" type="number" inputmode="numeric" min="0" step="100" value="${day.steps || ''}" placeholder="0" data-change="steps" data-day="${i}"></label>
-      </div>
+      <p class="muted small">Pojedeno do sada, od plana za danas. Računaju se samo štiklirani obroci${total.open ? ', bez slobodnijeg obroka' : ''}.</p>
       <div class="extra">
         <span>Umor ili jaka glad? Dodaj 150 do 200 kcal: voćku i čašu kvarga, ili veću porciju pirinča.</span>
         <button class="have${day.extra ? ' is-on' : ''}" aria-pressed="${!!day.extra}" data-action="toggle-extra" data-day="${i}">${day.extra ? 'Dodato' : 'Dodaj'}</button>
+      </div>
+    </section>
+    <section class="daysum">
+      <h2>Zadaci</h2>
+      <p class="daysum-tasks"><span class="num">${p.done}</span> od ${p.total} obavljeno</p>
+      <p class="muted small">${left.length ? 'Ostalo: ' + left.join(', ') + '.' : 'Sve je obavljeno za danas.'}</p>
+      <div class="row">
+        <label class="field"><span>Koraci danas, cilj je 8 do 10 hiljada</span>
+          <input class="input steps-input" type="number" inputmode="numeric" min="0" step="100" value="${day.steps || ''}" placeholder="0" data-change="steps" data-day="${i}"></label>
       </div>
     </section>`;
 }
@@ -2498,6 +2628,22 @@ const ACTIONS = {
   },
   'toggle-pick'(d) { ui.pickOpen = ui.pickOpen === d.key ? null : d.key; render(); },
   'pick'(d) { getDay(Number(d.day)).pick[d.key] = d.value; ui.pickOpen = null; update(); },
+  // Lunch or dinner: back to the plan, a quick meal ('q:id') or a box from the fridge ('box:w:s')
+  'choose-meal'(d) {
+    const i = Number(d.day), day = getDay(i);
+    const plannedQuick = mealFor(i, d.key).type === 'quick';
+    if (!day.swap) day.swap = {};
+    if (d.value === 'plan') {
+      delete day.swap[d.key];
+    } else if (d.value.startsWith('q:') && plannedQuick) {
+      day.pick[d.key] = d.value.slice(2);
+      delete day.swap[d.key];
+    } else {
+      day.swap[d.key] = d.value.startsWith('q:') ? d.value.slice(2) : d.value;
+    }
+    ui.pickOpen = null;
+    update();
+  },
   'toggle-extra'(d) { const day = getDay(Number(d.day)); day.extra = !day.extra; update(); },
 
   // Shopping list
