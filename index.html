@@ -439,7 +439,7 @@ const CATALOG = {
   // Dairy and eggs
   grcki:  { name: 'Grčki jogurt 2%', sv: 'grekisk yoghurt', cat: 'mlecno', kind: 'fresh', unit: 'g' },
   kvarg:  { name: 'Aromatizovani kvarg', sv: 'vit choklad, hallon', cat: 'mlecno', kind: 'fresh', unit: 'g' },
-  keso:   { name: 'Keso mini 1,5%', sv: 'cottage cheese', cat: 'mlecno', kind: 'fresh', unit: 'g' },
+  keso:   { name: 'Keso supermini', sv: 'cottage cheese supermini', cat: 'mlecno', kind: 'fresh', unit: 'g' },
   jaja:   { name: 'Jaja', sv: 'ägg', cat: 'mlecno', kind: 'fresh', unit: 'kom' },
   sejk:   { name: 'Arla proteinshake choklad', sv: '1 l', cat: 'mlecno', kind: 'fresh', unit: 'opt' },
 
@@ -703,7 +703,14 @@ const RECIPES = {
       'Začini soja sosom i limetom, pospi kikirikijem.'
     ],
     work: 'Sve ide u jednu kutiju i greje se u mikrotalasnoj.',
-    note: 'Računato sa kokosovim mlekom od 65 kcal na 100 ml. Proveri deklaraciju, razlike među markama su velike.'
+    variantsTitle: 'Po porciji, zavisno od kokosovog mleka',
+    variantsHead: 'Kokosovo mleko',
+    variants: [
+      ['Light, 400 ml (oko 65 kcal na 100 ml)', 460, 42],
+      ['Punomasno, pola konzerve (200 ml) i još 200 ml vode', 490, 42],
+      ['Punomasno, 400 ml (oko 195 kcal na 100 ml)', 585, 43]
+    ],
+    note: 'Računato sa light kokosovim mlekom. Punomasno (npr. Lidl, 194 kcal na 100 ml) ima tri puta više kalorija, pa od njega uzmi pola konzerve i dopuni vodom.'
   }
 };
 
@@ -728,12 +735,12 @@ const QUICK = {
     text: '200 g bele ribe (torsk, sej), 200 g krompira, 250 g paprike i tikvice iz air fryera, 1 kašičica maslinovog ulja i 50 g grčkog jogurta.'
   },
   salata: {
-    group: 'salata', name: 'Obrok salata', kcal: 490, protein: 44,
+    group: 'salata', name: 'Obrok salata', kcal: 505, protein: 47,
     text: '200 g iceberga, 300 g povrća (paprika, paradajz, krastavac), 50 g kukuruza, 120 g pilećeg filea, preliv od 100 g grčkog jogurta 2%, senfa, limuna i 1 kašičice maslinovog ulja, uz 1 krišku raženog hleba.'
   },
   omlet: {
-    group: 'salata', name: 'Omlet sa kesom', kcal: 460, protein: 36,
-    text: '2 jaja, 150 g keso mini, 200 g povrća, 1 kašičica ulja i 1 kriška raženog hleba.'
+    group: 'salata', name: 'Omlet sa kesom', kcal: 445, protein: 37,
+    text: '2 jaja, 150 g keso supermini, 200 g povrća, 1 kašičica ulja i 1 kriška raženog hleba.'
   },
   svinjski: {
     group: 'meso', name: 'Svinjski file sa brokolijem', kcal: 465, protein: 43,
@@ -748,9 +755,9 @@ const QUICK = {
 const BREAKFASTS = {
   D1: { name: 'Kvarg i banana', kcal: 320, protein: 24, text: '200 g aromatizovanog kvarga, 1 banana i 15 g oraha ili badema.' },
   D2: { name: 'Kvarg i ovsene', kcal: 340, protein: 27, text: '200 g aromatizovanog kvarga, 30 g ovsenih pahuljica, 100 g bobičastog voća i 10 g oraha.' },
-  D3: { name: 'Jaja i keso', kcal: 360, protein: 29, text: '2 kuvana jaja, 1 kriška raženog hleba (oko 45 g), 100 g keso mini i paprika ili krastavac.' },
-  D4: { name: 'Jaje i kvarg', kcal: 305, protein: 28, text: '1 kuvano jaje, 1 banana i 200 g aromatizovanog kvarga.' },
-  D5: { name: 'Jaje i šejk', kcal: 310, protein: 22, text: '1 kuvano jaje, 1 banana i 250 ml Arla proteinshake choklad.' }
+  D3: { name: 'Jaja i keso', kcal: 340, protein: 30, text: '2 kuvana jaja, 1 kriška raženog hleba (oko 45 g), 100 g keso supermini i paprika ili krastavac.' },
+  D4: { name: 'Jaje i kvarg', kcal: 295, protein: 28, text: '1 kuvano jaje, 1 banana i 200 g aromatizovanog kvarga.' },
+  D5: { name: 'Jaje i šejk', kcal: 305, protein: 22, text: '1 kuvano jaje, 1 banana i 250 ml Arla proteinshake choklad.' }
 };
 
 const SNACKS = {
@@ -759,7 +766,7 @@ const SNACKS = {
   U3: { name: 'Kvarg i voćka', kcal: 170, protein: 15, text: '1 čaša aromatizovanog kvarga (150 g) i voćka.' },
   U4: { name: 'Povrće i humus', kcal: 175, protein: 8, text: 'Šargarepa i paprika na štapiće i 100 g lakog humusa.' },
   U5: { name: 'Jaje i voćka', kcal: 155, protein: 7, text: '1 kuvano jaje i voćka.' },
-  U6: { name: 'Šejk i voćka', kcal: 170, protein: 14, text: '250 ml Arla proteinshake choklad i mala voćka.' }
+  U6: { name: 'Šejk i voćka', kcal: 180, protein: 14, text: '250 ml Arla proteinshake choklad i mala voćka.' }
 };
 
 // Light hummus, shown in the recipe list and used by two snacks.
@@ -2071,9 +2078,9 @@ function viewRecipe(id) {
   const r = RECIPES[id];
   const variants = !r.variants ? '' : `
     <section class="section">
-      <h2>Po porciji, zavisno od mesa</h2>
+      <h2>${r.variantsTitle || 'Po porciji, zavisno od mesa'}</h2>
       <div class="card"><table class="table">
-        <tr><th>Meso (600 g)</th><th class="r">kcal</th><th class="r">Proteini</th></tr>
+        <tr><th>${r.variantsHead || 'Meso (600 g)'}</th><th class="r">kcal</th><th class="r">Proteini</th></tr>
         ${r.variants.map(([name, kcal, protein]) => `<tr><td>${name}</td><td class="r num">${kcal}</td><td class="r">${protein} g</td></tr>`).join('')}
       </table></div>
     </section>`;
