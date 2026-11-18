@@ -312,6 +312,7 @@ a.link { display: inline-block; }
 .fig-torso { stroke: var(--ink); stroke-width: 8; stroke-linecap: round; }
 .fig-head { fill: var(--ink); }
 .fig-band { stroke: var(--paprika); stroke-width: 2.5; stroke-linecap: round; }
+.fig-ball { fill: var(--paprika); stroke: var(--ink); stroke-width: 1.5; }
 .cues { margin-top: 12px; }
 .cues li { display: grid; grid-template-columns: 24px 1fr; gap: 6px; padding: 4px 0; }
 .cues .num { color: var(--rim); }
@@ -873,6 +874,17 @@ const EXERCISES = [
     ],
     watch: 'Donji deo leđa ostaje na podu. Ako se odvaja, skrati pokret.',
     video: 'dead bug exercise proper form'
+  },
+  {
+    id: 'vup', name: 'Sklopka sa loptom', dose: '3 x 8 do 10 predavanja', sets: 3,
+    cues: [
+      'Lezi na leđa, ruke ispružene iza glave, noge prave. Lopta je u rukama.',
+      'Istovremeno podigni prave ruke i noge, sklopi se i predaj loptu među stopala.',
+      'Spusti se sa loptom među stopalima dok se ruke i noge ne isprave, pa se opet sklopi i vrati loptu u ruke. Svako predavanje je jedno ponavljanje.'
+    ],
+    watch: 'Dok spuštaš noge, donji deo leđa ostaje pritisnut uz pod. Ako se odvaja ili boli, ne spuštaj noge skroz ili savij kolena.',
+    harder: 'Lakše: savijena kolena ili bez lopte.',
+    video: 'V-up ball pass exercise'
   },
   {
     id: 'plank', name: 'Plank', dose: '3 x 20 do 40 sekundi', sets: 3, hold: true,
@@ -1438,6 +1450,18 @@ function frontPose(cx, footL, footR) {
   });
 }
 
+// Side view pose for folding on the floor (V-up). The hips stay put; angles are in
+// degrees from the floor: torso to the left, legs to the right, arms measured
+// from the right (0 = toward the feet, 180 = above the head along the floor).
+function foldPose(torso, legs, arms) {
+  const rad = d => d * Math.PI / 180;
+  const h = [108, 120];
+  const s = [h[0] - 38 * Math.cos(rad(torso)), h[1] - 38 * Math.sin(rad(torso))];
+  const a = [h[0] + 56 * Math.cos(rad(legs)), h[1] - 56 * Math.sin(rad(legs))];
+  const w = [s[0] + 38 * Math.cos(rad(arms)), s[1] - 38 * Math.sin(rad(arms))];
+  return pose({ s, h, a, w });
+}
+
 const DEMOS = {
   // Glute bridge: lying on the back, hips go up and down
   most: {
@@ -1519,6 +1543,19 @@ const DEMOS = {
     ]
   },
 
+  // V-up ball pass: from lying flat, fold up and hand the ball from the hands to the
+  // feet, lie flat again, fold up and hand it back. `ball` says who holds it in
+  // each step: w = hands, a = feet.
+  vup: {
+    seconds: 1.1, knee: [-1, -1], elbow: [-1, -1], foot: [[3, -8], [3, -8]],
+    view: [12, 48, 176, 88],
+    props: [['mat', 22, 178]],
+    ball: ['w', 'a', 'a', 'w'],
+    // [torso, legs, arms] angles; they are blended as angles so limbs stay straight
+    poseAt: foldPose,
+    frames: [[0, 0, 178], [70, 70, 28], [0, 6, 178], [70, 70, 28]]
+  },
+
   // Forearm plank: a straight line from head to heels, almost no movement
   plank: {
     seconds: 2.2, knee: [-1, -1], elbow: [1, 1], foot: [[3, 8], [3, 8]],
@@ -1538,9 +1575,12 @@ const smooth = t => t * t * (3 - 2 * t);
 function demoJoints(demo, time) {
   const n = demo.frames.length;
   const pos = (((time / demo.seconds) % n) + n) % n;        // never negative
-  const from = demo.frames[Math.floor(pos)];
-  const to = demo.frames[(Math.floor(pos) + 1) % n];
+  let from = demo.frames[Math.floor(pos)];
+  let to = demo.frames[(Math.floor(pos) + 1) % n];
   const t = smooth(pos - Math.floor(pos));
+  if (demo.poseAt) {                                    // frames are angles: blend them, then pose
+    from = to = demo.poseAt(...from.map((v, k) => v + (to[k] - v) * t));
+  }
 
   const j = {};
   for (const key of ['sn', 'sf', 'hn', 'hf', 'an', 'af', 'wn', 'wf']) j[key] = mix(from[key], to[key], t);
@@ -1553,6 +1593,7 @@ function demoJoints(demo, time) {
   j.tn = [j.an[0] + demo.foot[0][0], j.an[1] + demo.foot[0][1]];      // toes
   j.tf = [j.af[0] + demo.foot[1][0], j.af[1] + demo.foot[1][1]];
 
+  j.step = Math.floor(pos);                                          // which step of the loop
   j.sm = mix(j.sn, j.sf, 0.5);                                        // middle of shoulders and hips
   j.hm = mix(j.hn, j.hf, 0.5);
   if (from.head && to.head) {
@@ -1591,7 +1632,8 @@ function mountDemo(svg) {
     `<line class="fig-torso" data-p="torso"/><line class="fig-limb" data-p="shoulders"/><line class="fig-limb" data-p="hips"/>` +
     `<circle class="fig-head" r="${BONE.head}" data-p="head"/>` +
     `<polyline class="fig-limb" data-p="legN"/><polyline class="fig-limb" data-p="armN"/>` +
-    (demo.band ? `<line class="fig-band" data-p="band"/>` : '');
+    (demo.band ? `<line class="fig-band" data-p="band"/>` : '') +
+    (demo.ball ? `<circle class="fig-ball" r="6" data-p="ball"/>` : '');
   svg.parts = {};
   svg.querySelectorAll('[data-p]').forEach(el => { svg.parts[el.dataset.p] = el; });
   drawDemo(svg, 0);
@@ -1616,6 +1658,11 @@ function drawDemo(svg, time) {
   p.head.setAttribute('cx', j.head[0].toFixed(1));
   p.head.setAttribute('cy', j.head[1].toFixed(1));
   if (demo.band) setLine(p.band, ...demo.band(j));
+  if (demo.ball) {
+    const at = demo.ball[j.step] === 'a' ? [j.an[0] + 2, j.an[1] - 5] : [j.wn[0], j.wn[1] - 2];
+    p.ball.setAttribute('cx', at[0].toFixed(1));
+    p.ball.setAttribute('cy', at[1].toFixed(1));
+  }
 }
 
 // One animation loop for all demos on screen. It stops when none are left.
