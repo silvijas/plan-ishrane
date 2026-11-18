@@ -1537,7 +1537,7 @@ const smooth = t => t * t * (3 - 2 * t);
 // All joints of a demo at a given time (in seconds)
 function demoJoints(demo, time) {
   const n = demo.frames.length;
-  const pos = (time / demo.seconds) % n;
+  const pos = (((time / demo.seconds) % n) + n) % n;        // never negative
   const from = demo.frames[Math.floor(pos)];
   const to = demo.frames[(Math.floor(pos) + 1) % n];
   const t = smooth(pos - Math.floor(pos));
@@ -1628,14 +1628,18 @@ function startDemos() {
   svgs.forEach(svg => { if (!svg.parts) mountDemo(svg); });
   if (!svgs.length || demoLoop) return;
 
-  demoLast = performance.now();
+  demoLast = null;
   const step = now => {
     const live = document.querySelectorAll('svg.demo');
     if (!live.length) { demoLoop = null; return; }
-    if (!ui.demoPaused) demoClock += (now - demoLast) / 1000;
+    // The frame time can be a little earlier than when the loop started (it is on
+    // Android Chrome), so a step is never negative. Long gaps, such as a phone
+    // screen turned off, count as one frame.
+    const delta = demoLast === null ? 0 : Math.min(Math.max(now - demoLast, 0), 100);
+    if (!ui.demoPaused) demoClock += delta / 1000;
     demoLast = now;
-    live.forEach(svg => { if (svg.parts) drawDemo(svg, demoClock); });
     demoLoop = requestAnimationFrame(step);
+    live.forEach(svg => { if (svg.parts) drawDemo(svg, demoClock); });
   };
   demoLoop = requestAnimationFrame(step);
 }
