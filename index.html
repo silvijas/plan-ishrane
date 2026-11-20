@@ -70,6 +70,7 @@
 .hue-wok { --hue: #1F8F8F; }
 .hue-muckalica { --hue: #B5322E; }
 .hue-massaman { --hue: #B98445; }
+.hue-bolonjez { --hue: #8C5A3C; }
 
 /* ---------- Base ---------- */
 *, *::before, *::after { box-sizing: border-box; }
@@ -478,6 +479,7 @@ const CATALOG = {
   basmati:       { name: 'Basmati pirinač', sv: 'basmatiris', cat: 'suvo', kind: 'staple' },
   bulgur:        { name: 'Bulgur', sv: 'bulgur', cat: 'suvo', kind: 'staple' },
   rezanci:       { name: 'Rezanci', sv: 'risnudlar, äggnudlar', cat: 'suvo', kind: 'staple' },
+  testenina:     { name: 'Testenina (Barilla)', sv: 'pasta', cat: 'suvo', kind: 'staple' },
   ovsene:        { name: 'Ovsene pahuljice', sv: 'havregryn', cat: 'suvo', kind: 'staple' },
   orasi:         { name: 'Orasi ili bademi', sv: 'valnötter, mandlar', cat: 'suvo', kind: 'staple' },
   galete:        { name: 'Kukuruzne galete', sv: 'majskakor', cat: 'suvo', kind: 'staple' },
@@ -712,6 +714,32 @@ const RECIPES = {
       ['Punomasno, 400 ml (od toga 194 kcal po porciji)', 585, 43]
     ],
     note: 'Računato sa light kokosovim mlekom. Punomasno (npr. Lidl, 194 kcal na 100 ml) ima tri puta više kalorija, pa od njega uzmi pola konzerve i dopuni vodom.'
+  },
+
+  bolonjez: {
+    title: 'Bolonjez sa testeninom',
+    short: 'Bolonjez',
+    side: 'sa malo testenine',
+    set: 'Zamena', kcal: 485, protein: 34, minutes: 35,
+    ingredients: [
+      { t: '500 g mlevenog mesa 12%', use: [['junetina', 500]] },
+      { t: '1 glavica crnog luka, sitno seckana', use: [['crni_luk', 1]] },
+      { t: '3 čena belog luka', use: [['beli_luk']] },
+      { t: '2 paprike, seckane', use: [['paprika', 2]] },
+      { t: '1 konzerva seckanog paradajza (400 g)', use: [['paradajz_konz', 1]] },
+      { t: '1 kašika paradajz pirea (Mutti tuba)', use: [['pire']] },
+      { t: 'Aleva paprika, kumin, prstohvat cimeta, so i biber', use: [['aleva'], ['kumin'], ['cimet']] },
+      { t: '200 g testenine (Barilla), suve, to je 50 g po porciji', use: [['testenina']] }
+    ],
+    steps: [
+      'Meso proprži na jakoj vatri bez ulja dok ne porumeni, pa ocedi višak masti.',
+      'Dodaj luk, beli luk i papriku, prži 5 minuta dok ne omekšaju.',
+      'Umešaj začine i paradajz pire, prži još 1 minut.',
+      'Dodaj paradajz i malo vode, krčkaj poklopljeno 15 do 20 minuta.',
+      'Testeninu skuvaj posebno, 50 g suve po porciji.'
+    ],
+    work: 'Sos i testenina u jednu kutiju, greje se u mikrotalasnoj.',
+    note: 'Računato sa 500 g mesa i 50 g suve testenine po porciji. Sa 75 g testenine porcija ima oko 575 kcal.'
   }
 };
 
@@ -1105,8 +1133,9 @@ function pickOf(i, key) {
   return mealFor(i, key).group === 'riba' ? 'losos' : 'salata';
 }
 
-// A lunch or dinner can be swapped for a quick meal ('svinjski') or for a box
-// that is still in the fridge ('box:week:slot'). null when it is as planned.
+// A lunch or dinner can be swapped for a quick meal ('svinjski'), for a box
+// that is still in the fridge ('box:week:slot'), or for a dish cooked outside
+// the plan ('dish:bolonjez', not counted in the boxes). null when as planned.
 const swapOf = (i, which) => (peekDay(i).swap || {})[which] || null;
 
 function parseBoxSwap(swap) {
@@ -1123,6 +1152,7 @@ function servedFor(i, which) {
     const { week, slot } = parseBoxSwap(swap);
     return { type: 'dish', week, slot, dishId: state.dishes[week][slot], fromFridge: true, planned };
   }
+  if (swap.startsWith('dish:')) return { type: 'dish', dishId: swap.slice(5), offPlan: true, planned };
   return { type: 'quick', pickId: swap, swapped: true, planned };
 }
 
@@ -1939,6 +1969,9 @@ function mealChoices(i, which) {
     if (planned.type === 'dish' && b.week === planned.week && b.slot === planned.slot) continue;
     choices.push({ value: b.key, label: 'Iz frižidera: ' + RECIPES[b.dishId].short, on: swap === b.key });
   }
+  for (const id of DISH_IDS) {
+    choices.push({ value: 'dish:' + id, label: 'Van plana: ' + RECIPES[id].short, on: swap === 'dish:' + id });
+  }
   return choices;
 }
 
@@ -1996,9 +2029,9 @@ function mealRow(i, which, time, kind) {
 
   const r = RECIPES[meal.dishId];
   const cookNow = meal.cook && !swap;
-  const left = meal.fromFridge ? boxesLeft(meal.week, meal.slot) : 4 - meal.box + (done ? 0 : 1);
+  const left = meal.offPlan ? 0 : meal.fromFridge ? boxesLeft(meal.week, meal.slot) : 4 - meal.box + (done ? 0 : 1);
   const boxLabel = meal.fromFridge ? 'Kutija iz frižidera' : `Kutija ${meal.box} od 4`;
-  const notCooked = !meal.fromFridge && !meal.cook && !isCooked(meal.week, meal.slot)
+  const notCooked = !meal.fromFridge && !meal.offPlan && !meal.cook && !isCooked(meal.week, meal.slot)
     && i > meal.week * 7 + COOK_DAY[meal.slot];
   const text = cookNow ? 'Kuvanje traje oko ' + r.minutes + ' minuta. Prva porcija je večeras, tri idu u frižider.' : r.work;
 
@@ -2011,7 +2044,7 @@ function mealRow(i, which, time, kind) {
           ${check}
         </div>
         ${chips}
-        <p class="tl-meta hue-${meal.dishId}">${boxRow(4, Math.min(4, left), true)} ${boxLabel}</p>
+        ${meal.offPlan ? '<p class="tl-meta">Kuvano van plana, ne računa se u kutije.</p>' : `<p class="tl-meta hue-${meal.dishId}">${boxRow(4, Math.min(4, left), true)} ${boxLabel}</p>`}
         <p class="tl-text">${text}</p>
         ${notCooked ? '<p class="tl-meta">Kuvanje ovog jela nije štiklirano. Ako nije skuvano, zameni ovaj obrok.</p>' : ''}
         ${swapNote ? `<p class="tl-meta">${swapNote}</p>` : ''}
